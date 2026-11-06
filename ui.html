@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Копіювання виділених нодів</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1e1e1e;
+    --muted: #6b6b6b;
+    --border: #e5e5e5;
+    --hover: #f3f3f3;
+    --accent: #0d99ff;
+    --accent-fg: #ffffff;
+    --ok: #1a7f37;
+    --err: #cf222e;
+    --warn: #9a6700;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #2c2c2c;
+      --fg: #f0f0f0;
+      --muted: #a0a0a0;
+      --border: #444444;
+      --hover: #383838;
+      --accent: #0d99ff;
+      --accent-fg: #ffffff;
+      --ok: #4ac26b;
+      --err: #ff7b72;
+      --warn: #e3b341;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #2c2c2c;
+    --fg: #f0f0f0;
+    --muted: #a0a0a0;
+    --border: #444444;
+    --hover: #383838;
+    --accent: #0d99ff;
+    --accent-fg: #ffffff;
+    --ok: #4ac26b;
+    --err: #ff7b72;
+    --warn: #e3b341;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+  .head { display: flex; justify-content: space-between; align-items: baseline; }
+  .head h1 { font-size: 12px; font-weight: 600; margin: 0; }
+  .head .count { color: var(--muted); }
+
+  .list {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    max-height: 180px;
+    overflow: auto;
+  }
+  .item {
+    display: flex; flex-direction: column;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .item:last-child { border-bottom: none; }
+  .item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .meta { color: var(--muted); font-size: 11px; }
+  .empty { padding: 12px 8px; color: var(--muted); text-align: center; }
+
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { color: var(--muted); }
+  select, input[type="password"], button {
+    font: inherit;
+    color: var(--fg);
+  }
+  select, input[type="password"] {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    width: 100%;
+  }
+  .send-section { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+  select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+  button.primary {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.4; cursor: default; }
+  button.primary:not(:disabled):hover { filter: brightness(1.08); }
+
+  .status { min-height: 16px; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--err); }
+  .health { min-height: 16px; }
+  .health.ok { color: var(--ok); }
+  .health.warn { color: var(--warn); }
+  .health.err { color: var(--err); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>Виділені ноди</h1>
+    <span class="count">Вибрано: <span id="count">0</span></span>
+  </div>
+
+  <div id="list" class="list"></div>
+
+  <div class="field">
+    <label for="format">Формат</label>
+    <select id="format">
+      <option value="id">id</option>
+      <option value="idname">id + name</option>
+      <option value="link">link</option>
+      <option value="claude">Claude text</option>
+    </select>
+  </div>
+
+  <label class="check">
+    <input type="checkbox" id="auto">
+    <span>Автокопіювання при виборі</span>
+  </label>
+
+  <button id="copy" class="primary" disabled>Копіювати</button>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <div class="send-section">
+    <label class="check">
+      <input type="checkbox" id="send">
+      <span>Надсилати в Claude (localhost)</span>
+    </label>
+    <div class="field">
+      <label for="token">Токен</label>
+      <input type="password" id="token" autocomplete="off" spellcheck="false">
+    </div>
+    <div id="health" class="health" role="status" aria-live="polite" hidden></div>
+    <div id="sendStatus" class="status" role="status" aria-live="polite"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var state = { fileKey: null, nodes: [] };
+  var userGestured = false;
+  var lastSignature = null;
+
+  var countEl = document.getElementById('count');
+  var listEl = document.getElementById('list');
+  var formatEl = document.getElementById('format');
+  var autoEl = document.getElementById('auto');
+  var copyBtn = document.getElementById('copy');
+  var statusEl = document.getElementById('status');
+  var sendEl = document.getElementById('send');
+  var tokenEl = document.getElementById('token');
+  var sendStatusEl = document.getElementById('sendStatus');
+  var healthEl = document.getElementById('health');
+
+  var SEND_URL = 'http://localhost:3846/selection';
+  var SEND_TIMEOUT_MS = 2000;
+  var sendSeq = 0;
+
+  var HEALTH_URL = 'http://localhost:3846/health';
+  var HEALTH_TIMEOUT_MS = 1500;
+  var HEALTH_INTERVAL_MS = 3000;
+  var HEALTH_DEBOUNCE_MS = 400;
+  var healthTimer = null;
+  var healthDebounce = null;
+  var healthSeq = 0;
+  var HEALTH_STATES = {
+    ok: { text: '● Сервер працює', kind: 'ok' },
+    badToken: { text: '● Сервер працює, невірний токен', kind: 'warn' },
+    noToken: { text: '● Сервер працює, введіть токен', kind: 'warn' },
+    down: { text: '● Сервер не запущений', kind: 'err' }
+  };
+
+  function buildText(format, fileKey, nodes) {
+    if (format === 'idname') {
+      return nodes.map(function (n) { return n.id + ' "' + n.name + '"'; }).join('\n');
+    }
+    if (format === 'link') {
+      if (!fileKey) {
+        return nodes.map(function (n) { return n.id; }).join('\n');
+      }
+      return nodes.map(function (n) {
+        return 'https://www.figma.com/design/' + fileKey + '/?node-id=' + String(n.id).replace(/:/g, '-');
+      }).join('\n');
+    }
+    if (format === 'claude') {
+      return ['Figma nodes:'].concat(nodes.map(function (n) {
+        return n.id + ' "' + n.name + '" (' + n.type + ')';
+      })).join('\n');
+    }
+    return nodes.map(function (n) { return n.id; }).join('\n');
+  }
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    var ok = false;
+    try {
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      ok = document.execCommand('copy');
+    } catch (e) {
+      ok = false;
+    }
+    ta.remove();
+    return ok;
+  }
+
+  function copyText(text) {
+    var clip = navigator.clipboard;
+    var attempt = (clip && typeof clip.writeText === 'function')
+      ? clip.writeText(text).then(function () { return true; }, function () { return false; })
+      : Promise.resolve(false);
+    return attempt.then(function (ok) {
+      return ok ? true : fallbackCopy(text);
+    });
+  }
+
+  function setStatus(text, kind) {
+    statusEl.textContent = text;
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function setSendStatus(text, kind) {
+    sendStatusEl.textContent = text;
+    sendStatusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  // Persists the checkbox and token through the plugin's clientStorage.
+  function saveSettings() {
+    parent.postMessage({
+      pluginMessage: { type: 'save-settings', settings: { send: sendEl.checked, token: tokenEl.value } }
+    }, '*');
+  }
+
+  // Shows one of HEALTH_STATES, or hides the line when state is null.
+  function setHealth(state) {
+    var s = state ? HEALTH_STATES[state] : null;
+    if (!s) {
+      healthEl.hidden = true;
+      healthEl.textContent = '';
+      healthEl.className = 'health';
+      return;
+    }
+    healthEl.hidden = false;
+    healthEl.textContent = s.text;
+    healthEl.className = 'health ' + s.kind;
+  }
+
+  // GETs /health and renders the result. Never rejects; any failure means "not running".
+  function checkHealth() {
+    if (!sendEl.checked) return Promise.resolve();
+    var token = tokenEl.value.trim();
+    var seq = ++healthSeq;
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (controller) controller.abort();
+    }, HEALTH_TIMEOUT_MS);
+    return Promise.resolve()
+      .then(function () {
+        return fetch(HEALTH_URL, {
+          method: 'GET',
+          headers: { 'x-token': token },
+          signal: controller ? controller.signal : undefined
+        });
+      })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error('bad response');
+        return res.json();
+      })
+      .then(function (body) {
+        if (!body || body.ok !== true) return 'down';
+        if (!token) return 'noToken';
+        return body.authorized === true ? 'ok' : 'badToken';
+      }, function () {
+        return 'down';
+      })
+      .then(function (state) {
+        clearTimeout(timer);
+        if (seq === healthSeq && sendEl.checked) setHealth(state);
+      });
+  }
+
+  function startHealth() {
+    stopHealth();
+    checkHealth();
+    healthTimer = setInterval(checkHealth, HEALTH_INTERVAL_MS);
+  }
+
+  function stopHealth() {
+    if (healthTimer !== null) clearInterval(healthTimer);
+    healthTimer = null;
+    clearTimeout(healthDebounce);
+    healthDebounce = null;
+    healthSeq++; // discards any in-flight result
+  }
+
+  // Polls only while the send checkbox is on.
+  function syncHealth() {
+    if (sendEl.checked) {
+      startHealth();
+    } else {
+      stopHealth();
+      setHealth(null);
+    }
+  }
+
+  // Re-checks shortly after the token changes, so typing does not fire a request per key.
+  function scheduleHealthCheck() {
+    if (!sendEl.checked) return;
+    clearTimeout(healthDebounce);
+    healthDebounce = setTimeout(function () {
+      healthDebounce = null;
+      checkHealth();
+    }, HEALTH_DEBOUNCE_MS);
+  }
+
+  function applySettings(settings) {
+    if (!settings || typeof settings !== 'object') return;
+    if (typeof settings.send !== 'boolean' || typeof settings.token !== 'string') return;
+    sendEl.checked = settings.send;
+    tokenEl.value = settings.token;
+    syncHealth();
+  }
+
+  // POSTs the selection to the local server. Never rejects; failures only set the status lines.
+  function sendToClaude(fileKey, nodes) {
+    var token = tokenEl.value.trim();
+    if (!sendEl.checked || !token) {
+      setSendStatus('', '');
+      return Promise.resolve(false);
+    }
+    var seq = ++sendSeq;
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (controller) controller.abort();
+    }, SEND_TIMEOUT_MS);
+    setSendStatus('Надсилання…', '');
+    var body = JSON.stringify({
+      fileKey: fileKey,
+      nodes: nodes.map(function (n) { return { id: n.id, name: n.name, type: n.type }; })
+    });
+    return Promise.resolve()
+      .then(function () {
+        return fetch(SEND_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-token': token },
+          body: body,
+          signal: controller ? controller.signal : undefined
+        });
+      })
+      .then(function (res) {
+        if (res && res.status === 401) return 'unauthorized';
+        if (!res || !res.ok) return 'failed';
+        return 'sent';
+      }, function () {
+        return 'network';
+      })
+      .then(function (result) {
+        clearTimeout(timer);
+        if (seq === sendSeq) {
+          var ok = result === 'sent';
+          setSendStatus(ok ? 'Надіслано' : 'Помилка надсилання', ok ? 'ok' : 'err');
+          if (result === 'unauthorized' && sendEl.checked) setHealth('badToken');
+          if (result === 'network' && sendEl.checked) setHealth('down');
+        }
+        return ok;
+      });
+  }
+
+  function copySelection() {
+    if (!state.nodes.length) return Promise.resolve(false);
+    var text = buildText(formatEl.value, state.fileKey, state.nodes);
+    return copyText(text).then(function (ok) {
+      if (ok) {
+        setStatus('Скопійовано', 'ok');
+        parent.postMessage({ pluginMessage: { type: 'notify', message: 'Скопійовано' } }, '*');
+      } else {
+        setStatus('Помилка копіювання', 'err');
+      }
+      return ok;
+    });
+  }
+
+  function render() {
+    countEl.textContent = String(state.nodes.length);
+    listEl.textContent = '';
+    if (!state.nodes.length) {
+      var empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'Нічого не вибрано';
+      listEl.appendChild(empty);
+    } else {
+      state.nodes.forEach(function (n) {
+        var row = document.createElement('div');
+        row.className = 'item';
+        var name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = n.name || '(без назви)';
+        var meta = document.createElement('span');
+        meta.className = 'meta';
+        meta.textContent = n.id + ' · ' + n.type;
+        row.appendChild(name);
+        row.appendChild(meta);
+        listEl.appendChild(row);
+      });
+    }
+    copyBtn.disabled = !state.nodes.length;
+  }
+
+  window.addEventListener('message', function (event) {
+    var msg = event.data && event.data.pluginMessage;
+    if (!msg) return;
+
+    if (msg.type === 'settings') {
+      applySettings(msg.settings);
+      return;
+    }
+    if (msg.type !== 'selection') return;
+
+    state.fileKey = typeof msg.fileKey === 'string' ? msg.fileKey : null;
+    state.nodes = Array.isArray(msg.nodes)
+      ? msg.nodes.filter(function (n) { return n && n.id != null; })
+      : [];
+
+    render();
+    setStatus('', '');
+
+    var signature = JSON.stringify([state.fileKey, state.nodes.map(function (n) { return n.id; })]);
+    var isNew = signature !== lastSignature;
+    lastSignature = signature;
+
+    if (isNew && autoEl.checked && userGestured && state.nodes.length) {
+      copySelection();
+    }
+
+    // Every selection message is sent, including an empty one (nodes: []).
+    sendToClaude(state.fileKey, state.nodes);
+  });
+
+  // Browsers only allow clipboard writes after a user gesture.
+  document.addEventListener('click', function () {
+    userGestured = true;
+  }, true);
+
+  copyBtn.addEventListener('click', function () {
+    copySelection();
+  });
+
+  sendEl.addEventListener('change', function () {
+    saveSettings();
+    syncHealth();
+  });
+  tokenEl.addEventListener('input', function () {
+    saveSettings();
+    scheduleHealthCheck();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
