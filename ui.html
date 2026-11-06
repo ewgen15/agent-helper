@@ -45,6 +45,7 @@
   }
 
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; padding: 0; }
   body {
     background: var(--bg);
@@ -60,7 +61,7 @@
   .list {
     border: 1px solid var(--border);
     border-radius: 6px;
-    max-height: 180px;
+    max-height: 150px;
     overflow: auto;
   }
   .item {
@@ -105,6 +106,35 @@
   }
   button.primary:disabled { opacity: 0.4; cursor: default; }
   button.primary:not(:disabled):hover { filter: brightness(1.08); }
+
+  button.secondary {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+  }
+  button.secondary:disabled { opacity: 0.4; cursor: default; }
+  button.secondary:not(:disabled):hover { background: var(--hover); }
+
+  .detail-actions { display: flex; flex-direction: column; gap: 6px; }
+  .detail-actions button { width: 100%; }
+  .comment-box { display: flex; flex-direction: column; gap: 4px; }
+  .comment-box button { align-self: flex-end; }
+  .comment-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .comment-head label { color: var(--muted); }
+  .comment-head .count { color: var(--muted); }
+  textarea {
+    font: inherit;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    width: 100%;
+    resize: vertical;
+  }
 
   .status { min-height: 16px; }
   .status.ok { color: var(--ok); }
@@ -153,6 +183,20 @@
       <input type="password" id="token" autocomplete="off" spellcheck="false">
     </div>
     <div id="health" class="health" role="status" aria-live="polite" hidden></div>
+
+    <div class="detail-actions">
+      <button id="detailBtn" class="primary" type="button" disabled aria-label="Додати деталі виділення до Claude">Додати деталі</button>
+      <button id="commentToggle" class="secondary" type="button" disabled aria-expanded="false" aria-controls="commentBox">Додати деталі з коментарем</button>
+    </div>
+    <div id="commentBox" class="comment-box" hidden>
+      <div class="comment-head">
+        <label for="comment">Коментар для Claude</label>
+        <span id="commentCount" class="count">0/2000</span>
+      </div>
+      <textarea id="comment" rows="2" maxlength="2000" placeholder="Коментар для Claude…"></textarea>
+      <button id="commentSend" class="primary" type="button" disabled aria-label="Відправити коментар і деталі до Claude">Відправити</button>
+    </div>
+
     <div id="sendStatus" class="status" role="status" aria-live="polite"></div>
   </div>
 </div>
@@ -175,6 +219,21 @@
   var tokenEl = document.getElementById('token');
   var sendStatusEl = document.getElementById('sendStatus');
   var healthEl = document.getElementById('health');
+  var detailBtn = document.getElementById('detailBtn');
+  var commentToggleEl = document.getElementById('commentToggle');
+  var commentBoxEl = document.getElementById('commentBox');
+  var commentEl = document.getElementById('comment');
+  var commentCountEl = document.getElementById('commentCount');
+  var commentSendEl = document.getElementById('commentSend');
+
+  // Detail collection: the plugin builds the Compact Dump on click. The comment is kept in memory only.
+  var COMMENT_MAX = 2000;
+  var DETAIL_TIMEOUT_MS = 5000;
+  var DETAIL_WAIT_TEXT = 'Збираю деталі…';
+  var detailSeq = 0;
+  // The request in progress: {requestId, key, withComment, note, commentRaw, posting, timer} or null.
+  var detail = null;
+  var selectionKey = null;
 
   var SEND_URL = 'http://localhost:3846/selection';
   var SEND_TIMEOUT_MS = 2000;
@@ -349,10 +408,14 @@
     sendEl.checked = settings.send;
     tokenEl.value = settings.token;
     syncHealth();
+    updateDetailUi();
   }
 
   // POSTs the selection to the local server. Never rejects; failures only set the status lines.
-  function sendToClaude(fileKey, nodes) {
+  // opts is used by the detail flow only: {detail, note, startText, successText}.
+  // Resolves true when the server accepted the request.
+  function sendToClaude(fileKey, nodes, opts) {
+    opts = opts || {};
     var token = tokenEl.value.trim();
     if (!sendEl.checked || !token) {
       setSendStatus('', '');
@@ -363,11 +426,14 @@
     var timer = setTimeout(function () {
       if (controller) controller.abort();
     }, SEND_TIMEOUT_MS);
-    setSendStatus('Надсилання…', '');
-    var body = JSON.stringify({
+    setSendStatus(opts.startText || 'Надсилання…', '');
+    var payload = {
       fileKey: fileKey,
       nodes: nodes.map(function (n) { return { id: n.id, name: n.name, type: n.type }; })
-    });
+    };
+    if ('detail' in opts) payload.detail = opts.detail;
+    if (opts.note) payload.note = opts.note;
+    var body = JSON.stringify(payload);
     return Promise.resolve()
       .then(function () {
         return fetch(SEND_URL, {
@@ -388,12 +454,105 @@
         clearTimeout(timer);
         if (seq === sendSeq) {
           var ok = result === 'sent';
-          setSendStatus(ok ? 'Надіслано' : 'Помилка надсилання', ok ? 'ok' : 'err');
+          setSendStatus(ok ? (opts.successText || 'Надіслано') : 'Помилка надсилання', ok ? 'ok' : 'err');
           if (result === 'unauthorized' && sendEl.checked) setHealth('badToken');
           if (result === 'network' && sendEl.checked) setHealth('down');
         }
         return ok;
       });
+  }
+
+  // Canonical form of a set of node ids: sorted, so the order of the ids does not matter.
+  function idsKey(ids) {
+    return JSON.stringify(ids.map(String).sort());
+  }
+
+  function selectedIdsKey() {
+    return idsKey(state.nodes.map(function (n) { return n.id; }));
+  }
+
+  function canRequestDetail() {
+    return sendEl.checked && tokenEl.value.trim() !== '' && state.nodes.length > 0;
+  }
+
+  // Keeps the detail buttons in step with the send settings, the selection and any request in progress.
+  function updateDetailUi() {
+    var enabled = canRequestDetail() && !detail;
+    detailBtn.disabled = !enabled;
+    commentToggleEl.disabled = !enabled;
+    commentSendEl.disabled = !enabled;
+    commentCountEl.textContent = commentEl.value.length + '/' + COMMENT_MAX;
+  }
+
+  function setCommentOpen(open) {
+    commentBoxEl.hidden = !open;
+    commentToggleEl.setAttribute('aria-expanded', String(open));
+    if (open) commentEl.focus();
+  }
+
+  function clearComment() {
+    commentEl.value = '';
+    setCommentOpen(false);
+    updateDetailUi();
+  }
+
+  // Drops the request that is still waiting for its reply (the selection or the send setting changed).
+  function cancelDetail() {
+    if (!detail) return;
+    if (detail.timer !== null) clearTimeout(detail.timer);
+    if (!detail.posting && sendStatusEl.textContent === DETAIL_WAIT_TEXT) setSendStatus('', '');
+    detail = null;
+  }
+
+  // Asks the plugin for the detail of the current selection. withComment: also send the comment.
+  function requestDetail(withComment) {
+    if (detail || !canRequestDetail()) return;
+    var id = ++detailSeq;
+    var raw = commentEl.value;
+    detail = {
+      requestId: id,
+      key: selectedIdsKey(),
+      withComment: withComment,
+      note: withComment ? raw.trim() : '',
+      commentRaw: raw,
+      posting: false,
+      timer: null
+    };
+    detail.timer = setTimeout(function () {
+      if (!detail || detail.requestId !== id) return;
+      detail = null;
+      setSendStatus('Таймаут збору деталей', 'err');
+      updateDetailUi();
+    }, DETAIL_TIMEOUT_MS);
+    setSendStatus(DETAIL_WAIT_TEXT, '');
+    updateDetailUi();
+    parent.postMessage({ pluginMessage: { type: 'request-detail', requestId: id } }, '*');
+  }
+
+  // The plugin's detail reply. Only the reply to the current request for the current ids is sent.
+  function onDetailReply(msg) {
+    if (!detail || detail.posting || msg.requestId !== detail.requestId) return;
+    if (!Array.isArray(msg.ids) || idsKey(msg.ids) !== detail.key || selectedIdsKey() !== detail.key) return;
+    var current = detail;
+    clearTimeout(current.timer);
+    current.timer = null;
+    current.posting = true;
+    updateDetailUi();
+    var opts = { detail: msg.detail, startText: DETAIL_WAIT_TEXT, successText: 'Деталі надіслано' };
+    if (current.note) opts.note = current.note;
+    sendToClaude(state.fileKey, state.nodes, opts).then(function (ok) {
+      if (detail === current) detail = null;
+      if (ok && current.withComment && commentEl.value === current.commentRaw) clearComment();
+      updateDetailUi();
+    });
+  }
+
+  function onDetailError(msg) {
+    if (!detail || detail.posting || msg.requestId !== detail.requestId) return;
+    clearTimeout(detail.timer);
+    detail = null;
+    setSendStatus(typeof msg.message === 'string' && msg.message ? msg.message : 'Помилка збору деталей', 'err');
+    updateDetailUi();
   }
 
   function copySelection() {
@@ -434,6 +593,7 @@
       });
     }
     copyBtn.disabled = !state.nodes.length;
+    updateDetailUi();
   }
 
   window.addEventListener('message', function (event) {
@@ -442,6 +602,14 @@
 
     if (msg.type === 'settings') {
       applySettings(msg.settings);
+      return;
+    }
+    if (msg.type === 'detail') {
+      onDetailReply(msg);
+      return;
+    }
+    if (msg.type === 'detail-error') {
+      onDetailError(msg);
       return;
     }
     if (msg.type !== 'selection') return;
@@ -462,6 +630,15 @@
       copySelection();
     }
 
+    // The comment and any pending detail request belong to the set of selected ids.
+    var key = selectedIdsKey();
+    if (key !== selectionKey) {
+      selectionKey = key;
+      clearComment();
+      cancelDetail();
+      updateDetailUi();
+    }
+
     // Every selection message is sent, including an empty one (nodes: []).
     sendToClaude(state.fileKey, state.nodes);
   });
@@ -478,12 +655,31 @@
   sendEl.addEventListener('change', function () {
     saveSettings();
     syncHealth();
+    if (!sendEl.checked) cancelDetail();
+    updateDetailUi();
   });
   tokenEl.addEventListener('input', function () {
     saveSettings();
     scheduleHealthCheck();
+    updateDetailUi();
   });
 
+  detailBtn.addEventListener('click', function () {
+    requestDetail(false);
+  });
+  commentToggleEl.addEventListener('click', function () {
+    setCommentOpen(commentBoxEl.hidden);
+    updateDetailUi();
+  });
+  commentEl.addEventListener('input', function () {
+    if (commentEl.value.length > COMMENT_MAX) commentEl.value = commentEl.value.slice(0, COMMENT_MAX);
+    updateDetailUi();
+  });
+  commentSendEl.addEventListener('click', function () {
+    requestDetail(true);
+  });
+
+  setCommentOpen(false);
   render();
 })();
 </script>

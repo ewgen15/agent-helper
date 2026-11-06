@@ -4,3 +4,4 @@
 require('./server.test.js');
 require('./ui.test.js');
 require('./code.test.js');
+require('./compact-text.test.js');
