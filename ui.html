@@ -46,29 +46,32 @@
 
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  html, body { margin: 0; padding: 0; }
+  html, body { margin: 0; padding: 0; height: 100%; }
   body {
     background: var(--bg);
     color: var(--fg);
     font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
-  .wrap { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  /* The window has a fixed size (380x520, see code.ts): the header stays put and #content scrolls. */
+  .wrap { padding: 12px; display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; }
 
-  .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .head-end { display: flex; align-items: center; gap: 8px; }
-  .content { display: flex; flex-direction: column; gap: 10px; }
-  .panel { display: flex; flex-direction: column; gap: 10px; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex: none; min-width: 0; }
+  .head-end { display: flex; align-items: center; gap: 8px; flex: none; white-space: nowrap; }
+  .content { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  .panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   /* Collapsed: only the header row stays visible (code.ts resizes the window to 56 px). */
   body.collapsed .content { display: none; }
-  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); flex: none; min-width: 0; }
   .tab {
     background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
     margin-bottom: -1px; padding: 6px 8px; color: var(--muted); cursor: pointer; font: inherit;
+    white-space: nowrap; flex: 0 0 auto;
   }
   .tab:hover { color: var(--fg); }
   .tab[aria-selected="true"] { color: var(--fg); font-weight: 600; border-bottom-color: var(--accent); }
-  .head h1 { font-size: 12px; font-weight: 600; margin: 0; }
-  .head .count { color: var(--muted); }
+  .head h1 { font-size: 12px; font-weight: 600; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .head .count { color: var(--muted); white-space: nowrap; }
+  #collapseBtn { white-space: nowrap; flex: none; }
 
   .list {
     border: 1px solid var(--border);
@@ -111,6 +114,7 @@
   .expand-check:has(input:disabled) { opacity: 0.4; cursor: default; }
 
   button.primary {
+    white-space: nowrap; flex-shrink: 0;
     background: var(--accent);
     color: var(--accent-fg);
     border: none;
@@ -122,6 +126,7 @@
   button.primary:not(:disabled):hover { filter: brightness(1.08); }
 
   button.secondary {
+    white-space: nowrap; flex-shrink: 0;
     background: var(--bg);
     color: var(--fg);
     border: 1px solid var(--border);
@@ -150,28 +155,29 @@
     resize: vertical;
   }
 
-  .records-head { display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
-  .records-summary { margin-right: auto; color: var(--muted); }
+  .records-head { display: flex; justify-content: flex-end; align-items: center; gap: 6px; min-width: 0; }
+  .records-summary { margin-right: auto; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .records-head button { flex: none; white-space: nowrap; }
   .hint { color: var(--muted); }
   .records-list { max-height: 160px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
   .records-empty { padding: 8px; color: var(--muted); text-align: center; }
   .rec + .rec { border-top: 1px solid var(--border); }
   .rec-row {
-    display: flex; flex-direction: column; gap: 2px; width: 100%;
+    display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0;
     padding: 6px 8px; background: none; border: none; text-align: left;
     cursor: pointer; font: inherit; color: var(--fg);
   }
   .rec-row:hover { background: var(--hover); }
   .rec-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-  .rec-time { flex: none; font-variant-numeric: tabular-nums; }
+  .rec-time { flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .rec-file { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-  .rec-count { flex: none; color: var(--muted); }
+  .rec-count { flex: none; color: var(--muted); white-space: nowrap; }
   .rec-first { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-  .badge { flex: none; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 10px; color: var(--muted); }
+  .badge { flex: none; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 10px; color: var(--muted); white-space: nowrap; }
   .rec-detail { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 8px; color: var(--muted); font-size: 11px; }
   .rec.done { opacity: 0.5; }
   .rec-actions { padding: 0 8px 6px; }
-  .rec-actions button { font-size: 11px; }
+  .rec-actions button { font-size: 11px; white-space: nowrap; flex: none; }
   .rec-node { overflow-wrap: anywhere; }
   .rec-label { margin-top: 4px; }
   .rec-note { color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -852,9 +858,36 @@
     refreshRecords(); // on start: loads the list when sending is on (does nothing when it is off)
   }
 
+  // Keeps server text short enough for the status line; plain text only (set via textContent).
+  function clipServerText(text) {
+    var s = typeof text === 'string' ? text.trim() : '';
+    return s.length > 120 ? s.slice(0, 119) + '…' : s;
+  }
+
+  function detailSavedText(nodes) {
+    if (!Number.isInteger(nodes) || nodes < 0) return 'Деталі збережено';
+    return 'Деталі збережено (' + nodes + ' ' + nodesWord(nodes) + ')';
+  }
+
+  // Reads the server's answer to a detail POST. The server answers 200 even when it rejects the detail,
+  // so only detail.stored === true counts as saved. A body that cannot be parsed counts as a failed request.
+  function readDetailAck(res) {
+    return Promise.resolve()
+      .then(function () { return res.json(); })
+      .then(function (body) {
+        var d = body && typeof body === 'object' ? body.detail : null;
+        if (!d || typeof d !== 'object') return { result: 'unconfirmed' };
+        if (d.stored === true) return { result: 'stored', nodes: d.nodes };
+        if (d.stored === false) return { result: 'rejected', message: clipServerText(d.error) };
+        return { result: 'unconfirmed' };
+      }, function () {
+        return { result: 'failed' };
+      });
+  }
+
   // POSTs the selection to the local server. Never rejects; failures only set the status lines.
-  // opts is used by the detail flow only: {detail, note, startText, successText}.
-  // Resolves true when the server accepted the request.
+  // opts is used by the detail flow only: {detail, note, startText}.
+  // Resolves true when the server accepted the request (for a detail POST: when it stored the detail).
   function sendToClaude(fileKey, nodes, opts) {
     opts = opts || {};
     var token = tokenEl.value.trim();
@@ -885,21 +918,28 @@
         });
       })
       .then(function (res) {
-        if (res && res.status === 401) return 'unauthorized';
-        if (!res || !res.ok) return 'failed';
-        return 'sent';
+        if (res && res.status === 401) return { result: 'unauthorized' };
+        if (!res || !res.ok) return { result: 'failed' };
+        if (!('detail' in opts)) return { result: 'sent' };
+        return readDetailAck(res);
       }, function () {
-        return 'network';
+        return { result: 'network' };
       })
-      .then(function (result) {
+      .then(function (outcome) {
         clearTimeout(timer);
+        var r = outcome.result;
+        var ok = r === 'sent' || r === 'stored';
         if (seq === sendSeq) {
-          var ok = result === 'sent';
-          setSendStatus(ok ? (opts.successText || 'Надіслано') : 'Помилка надсилання', ok ? 'ok' : 'err');
-          if (result === 'unauthorized' && sendEl.checked) setHealth('badToken');
-          if (result === 'network' && sendEl.checked) setHealth('down');
+          var text = 'Помилка надсилання';
+          if (r === 'sent') text = 'Надіслано';
+          else if (r === 'stored') text = detailSavedText(outcome.nodes);
+          else if (r === 'rejected') text = 'Деталі не збережено' + (outcome.message ? ': ' + outcome.message : '');
+          else if (r === 'unconfirmed') text = 'Сервер не підтвердив збереження деталей';
+          setSendStatus(text, ok ? 'ok' : 'err');
+          if (r === 'unauthorized' && sendEl.checked) setHealth('badToken');
+          if (r === 'network' && sendEl.checked) setHealth('down');
         }
-        // Only a successful detail POST can add or change a saved record, so only it refreshes the list.
+        // Only a stored detail can add or change a saved record, so only it refreshes the list.
         // Plain selection POSTs change just "current" and leave the list alone. The count stays current off-tab too.
         if (ok && 'detail' in opts) refreshRecords();
         return ok;
@@ -985,7 +1025,7 @@
     current.timer = null;
     current.posting = true;
     updateDetailUi();
-    var opts = { detail: msg.detail, startText: DETAIL_WAIT_TEXT, successText: 'Деталі надіслано' };
+    var opts = { detail: msg.detail, startText: DETAIL_WAIT_TEXT };
     if (current.note) opts.note = current.note;
     sendToClaude(state.fileKey, state.nodes, opts).then(function (ok) {
       if (detail === current) detail = null;

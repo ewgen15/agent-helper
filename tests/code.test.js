@@ -79,11 +79,17 @@ async function loadCode({ fileKey, stored, storageMode, extra, clock } = {}) {
 const settingsMessages = (ctx) => ctx.posted.filter((m) => m.type === 'settings');
 const selectionMessages = (ctx) => ctx.posted.filter((m) => m.type === 'selection');
 
+test('code.ts: UI_WIDTH is 380 and is the width passed to showUI', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'code.ts'), 'utf8');
+  assert.match(src, /const UI_WIDTH = 380;/);
+  assert.match(src, /figma\.showUI\(__html__, \{ width: UI_WIDTH, height: UI_HEIGHT \}\);/);
+});
+
 test('code.js shows the UI and posts the default settings and the initial selection', async () => {
   const ctx = await loadCode();
   assert.equal(ctx.shown.length, 1);
   assert.equal(ctx.shown[0].html, '<html>stub</html>');
-  assert.deepEqual(plain(ctx.shown[0].options), { width: 320, height: 520 });
+  assert.deepEqual(plain(ctx.shown[0].options), { width: 380, height: 520 });
   assert.deepEqual(plain(ctx.posted), [
     { type: 'settings', settings: { send: false, token: '' } },
     { type: 'selection', fileKey: null, nodes: [] },
@@ -188,16 +194,16 @@ test('code.js: close message calls figma.closePlugin', async () => {
   assert.equal(ctx.state.closed, 1);
 });
 
-test('code.js: resize with collapsed true resizes the UI to 320x56', async () => {
+test('code.js: resize with collapsed true resizes the UI to 380x56', async () => {
   const ctx = await loadCode();
   ctx.figma.ui.onmessage({ type: 'resize', collapsed: true });
-  assert.deepEqual(ctx.resized, [{ width: 320, height: 56 }]);
+  assert.deepEqual(ctx.resized, [{ width: 380, height: 56 }]);
 });
 
-test('code.js: resize with collapsed false resizes the UI to 320x520', async () => {
+test('code.js: resize with collapsed false resizes the UI to 380x520', async () => {
   const ctx = await loadCode();
   ctx.figma.ui.onmessage({ type: 'resize', collapsed: false });
-  assert.deepEqual(ctx.resized, [{ width: 320, height: 520 }]);
+  assert.deepEqual(ctx.resized, [{ width: 380, height: 520 }]);
 });
 
 test('code.js: resize with a non-boolean or missing collapsed is ignored and does not throw', async () => {

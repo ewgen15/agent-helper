@@ -1603,7 +1603,7 @@ async function saveSettings(settings: Settings): Promise<void> {
 // selection the UI sees always comes after the settings it depends on.
 let ready = false;
 
-const UI_WIDTH = 320;
+const UI_WIDTH = 380;
 const UI_HEIGHT = 520;
 const UI_COLLAPSED_HEIGHT = 56;
 

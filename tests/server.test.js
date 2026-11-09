@@ -184,11 +184,11 @@ test('server/index.js HTTP endpoint', async (t) => {
     assert.equal(res.status, 400);
   });
 
-  await t.test('413 for a body larger than 100KB', async () => {
+  await t.test('413 for a body larger than 1MB', async () => {
     const big = JSON.stringify({
       fileKey: 'abc123',
       nodes: [],
-      pad: 'x'.repeat(100 * 1024 + 1024),
+      pad: 'x'.repeat(1024 * 1024 + 1024),
     });
     const res = await post({ 'x-token': TOKEN }, big);
     assert.equal(res.status, 413);
@@ -251,7 +251,7 @@ test('server/index.js HTTP endpoint', async (t) => {
     ['maxTextChars is 201', 'detail.maxTextChars must be an integer 0-200', { ...DETAIL_OK, maxTextChars: 201 }],
     ['include has an unknown value', /detail.include/, { ...DETAIL_OK, include: ['shadow'] }],
     ['roots missing', 'detail.roots must be an array', { ...DETAIL_OK, roots: undefined }],
-    ['nesting 9 levels', /nesting must be at most 8/, { ...DETAIL_OK, roots: [nestedRecord(9)] }],
+    ['nesting 11 levels', /nesting must be at most 10 levels/, { ...DETAIL_OK, roots: [nestedRecord(11)] }],
     [
       '401 records',
       /at most 400 records/,
@@ -260,11 +260,7 @@ test('server/index.js HTTP endpoint', async (t) => {
         roots: [{ id: '1:1', t: 'FRAME', ch: Array.from({ length: 400 }, (_, i) => ({ id: `2:${i}`, t: 'TEXT' })) }],
       },
     ],
-    [
-      'string of 301 characters',
-      /at most 300 characters/,
-      { ...DETAIL_OK, roots: [{ id: '1:1', t: 'TEXT', tx: 'x'.repeat(301) }] },
-    ],
+    ['record outside a template has no id', 'detail record needs string id and t', { ...DETAIL_OK, roots: [{ t: 'FRAME' }] }],
     ['record has an unknown key', /unknown key "foo"/, { ...DETAIL_OK, roots: [{ id: '1:1', t: 'FRAME', foo: 1 }] }],
     ['record has no t', 'detail record needs string id and t', { ...DETAIL_OK, roots: [{ id: '1:1' }] }],
     ['group items are not strings', /items must be arrays of strings/, { ...DETAIL_OK, roots: [{ x: 2, tpl: { id: '1:1', t: 'TEXT' }, items: [[1]] }] }],
@@ -279,6 +275,26 @@ test('server/index.js HTTP endpoint', async (t) => {
       else assert.match(body.detail.error, expected);
     });
   }
+
+  // Shapes the plugin really emits (code.ts compactTemplate / compactListingRecord / cutRootsSummary).
+  await t.test('folded group: template records without id, and a nested group without items, are stored', async () => {
+    const cell = { t: 'FRAME', n: 'Cell', ch: [{ x: 2, tpl: { t: 'TEXT', n: 'Label', tx: 'a' } }] };
+    const group = { x: 3, tpl: cell, items: [['1:2', 'a'], ['1:3', 'b'], ['1:4', 'c']] };
+    const res = await post({ 'x-token': TOKEN }, withDetail({ ...DETAIL_OK, roots: [{ id: '1:1', t: 'FRAME', ch: [group] }] }));
+    assert.deepEqual(JSON.parse(res.text).detail, { stored: true, tier: 'A', nodes: 5 });
+  });
+
+  await t.test('nesting of exactly 10 levels (instance at depth 6 with its 3-level listing) is stored', async () => {
+    const res = await post({ 'x-token': TOKEN }, withDetail({ ...DETAIL_OK, tier: 'B', depth: 6, maxNodes: 300, maxTextChars: 120, roots: [nestedRecord(10)] }));
+    assert.equal(JSON.parse(res.text).detail.stored, true);
+  });
+
+  await t.test('a string longer than 300 characters is cut to 288 plus "…(+N)" and the detail is stored', async () => {
+    const long = 'y'.repeat(400);
+    const roots = [{ id: '1:1', t: 'TEXT', n: long, tx: long, p: { Label: long }, ch: [`…cut roots: ${long}`] }];
+    const res = await post({ 'x-token': TOKEN }, withDetail({ ...DETAIL_OK, roots }));
+    assert.deepEqual(JSON.parse(res.text).detail, { stored: true, tier: 'A', nodes: 1 });
+  });
 
   await t.test('OPTIONS preflight is 204 with CORS headers for https://www.figma.com', async () => {
     const res = await httpRequest(port, {
@@ -1267,9 +1283,9 @@ test('server/index.js POST /records/<id>/status', { timeout: 30000 }, async (t) 
     assert.equal(get.headers.allow, 'POST, OPTIONS');
   });
 
-  await t.test('413 for a body larger than 100KB', async () => {
+  await t.test('413 for a body larger than 1MB', async () => {
     const statusBefore = (await s.get()).records[0].status;
-    const big = JSON.stringify({ status: 'new', pad: 'x'.repeat(100 * 1024 + 1024) });
+    const big = JSON.stringify({ status: 'new', pad: 'x'.repeat(1024 * 1024 + 1024) });
     assert.equal((await postStatus(s.port, id, big)).status, 413);
     assert.equal((await s.get()).records[0].status, statusBefore);
   });
@@ -1338,4 +1354,38 @@ test('server/index.js get_figma_selection_detail default picks the newest "new" 
   // json format carries the status as a field.
   const parsed = JSON.parse((await s.detail({ format: 'json' })).text);
   assert.equal(parsed.status, 'done');
+});
+
+// A tier B detail as the plugin builds it for a big selection: 10 roots, each a 6-level frame chain ending in an
+// instance at depth 6 (its listing reaches level 10), 200 override texts of 200 characters per instance, a folded
+// group with a nested group in its template, a long TEXT property and a long "…cut roots" summary.
+test('server/index.js: a realistic large tier B detail (over 100 KB) is stored', { timeout: 30000 }, async (t) => {
+  const s = await startServer(t);
+  const longText = (i) => `Рядок ${i} `.repeat(40).slice(0, 200);
+  const overrides = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`Row ${i}/Label`, longText(i)]));
+  const listingTree = (id, k) =>
+    k === 1
+      ? { id, t: 'TEXT', n: 'Label', tx: 'Cell', ch: ['…+2 nodes, ще 1 рівень'] }
+      : { id, t: 'FRAME', n: 'Row', cn: 2, ch: [listingTree(`${id}.a`, k - 1), listingTree(`${id}.b`, k - 1)] };
+  const rootWithInstance = (r) => {
+    let node = { id: `${r}:inst`, t: 'INSTANCE', n: 'Card', c: 'Card', p: { Title: 'z'.repeat(350) }, ot: overrides, ch: [listingTree(`${r}:l`, 3)] };
+    for (let level = 6; level >= 1; level--) node = { id: `${r}:${level}`, t: 'FRAME', n: `Level ${level}`, ch: [node] };
+    return node;
+  };
+  const cell = { t: 'FRAME', n: 'Cell', ch: [{ x: 2, tpl: { t: 'TEXT', n: 'Label', tx: 'Cell' } }] };
+  const roots = Array.from({ length: 10 }, (_, r) => rootWithInstance(`${10 + r}`));
+  roots[0].ch.push({ x: 3, tpl: cell, items: [['9:1', 'a'], ['9:2', 'b'], ['9:3', 'c']] });
+  roots.push(`…+3 roots`);
+  roots.push(`…cut roots: ${Array.from({ length: 40 }, (_, i) => `59:${100 + i} (budget,timeout)`).join(', ')}`);
+  const detail = { ...DETAIL_OK, tier: 'B', depth: 6, maxNodes: 300, maxTextChars: 120, roots, truncated: true, buildMs: 140 };
+  const body = JSON.stringify({ fileKey: 'big', nodes: nodesN(10, 'big'), detail });
+  assert.ok(Buffer.byteLength(body) > 100 * 1024, `body is ${Buffer.byteLength(body)} bytes`);
+
+  const res = await s.postDetail({ fileKey: 'big', nodes: nodesN(10, 'big'), detail });
+  assert.equal(res.detail.stored, true, res.detail.error);
+  assert.equal(res.detail.tier, 'B');
+
+  const { records } = await s.get();
+  assert.equal(records[0].hasDetail, true);
+  assert.equal(JSON.parse((await s.detail({ format: 'json' })).text).status, 'new');
 });

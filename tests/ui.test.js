@@ -84,9 +84,17 @@ function loadUi({ clipboard, execCommand, fetchImpl } = {}) {
 
   const fetch = (url, init) => {
     fetchCalls.push({ url, init });
-    return fetchImpl
-      ? fetchImpl(url, init)
-      : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, authorized: true }) });
+    if (fetchImpl) return fetchImpl(url, init);
+    // Like the server: a detail POST is stored, and the answer counts the selected nodes.
+    if (init && init.method === 'POST' && 'detail' in JSON.parse(init.body)) {
+      const nodes = JSON.parse(init.body).nodes.length;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ ok: true, count: nodes, receivedAt: 1, detail: { stored: true, tier: 'compact', nodes } }),
+      });
+    }
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, authorized: true }) });
   };
   // Timers are recorded, not run, so tests decide when the 2s timeout fires.
   const fakeSetTimeout = (fn, ms) => {
@@ -786,7 +794,7 @@ test('ui.html matching detail reply POSTs the selection with detail and no note'
   assert.deepEqual(plain(last.init.headers), { 'Content-Type': 'application/json', 'x-token': 'secret' });
   assert.deepEqual(bodyOf(last), { fileKey: 'FK1', nodes: NODES, detail: DETAIL });
   assert.equal('note' in bodyOf(last), false);
-  assert.equal(ui.elements.sendStatus.textContent, 'Деталі надіслано');
+  assert.equal(ui.elements.sendStatus.textContent, 'Деталі збережено (2 вузли)');
   assert.equal(ui.elements.sendStatus.className, 'status ok');
   assert.equal(ui.elements.detailBtn.disabled, false);
 });
@@ -1002,6 +1010,90 @@ test('ui.html 401 on the detail POST marks the token as wrong and keeps the comm
   assert.equal(ui.elements.detailBtn.disabled, false);
 });
 
+// ---- Detail acknowledgement: the server answers 200 even when it rejects the detail ----
+
+const RECORDS_GET_URL = 'http://localhost:3846/records';
+const HEALTH_OK = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, authorized: true }) });
+
+// Answers only the detail POST with `answer` (an object becomes the JSON body; 'garbage' is an unparsable body).
+// Every other request gets the health-style answer.
+function detailAnswer(answer) {
+  return (url, init) => {
+    if (init.method !== 'POST' || !('detail' in JSON.parse(init.body))) return HEALTH_OK();
+    if (answer === 'garbage') {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError('Unexpected token')) });
+    }
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(answer) });
+  };
+}
+
+function recordsGets(ui) {
+  return ui.fetchCalls.filter((c) => c.url === RECORDS_GET_URL && c.init.method === 'GET').length;
+}
+
+// Sends a selection, presses "Додати деталі" and answers the request with the given detail reply.
+async function detailFlow(ui) {
+  ui.sendSelection('FK1', NODES);
+  await flush();
+  ui.elements.detailBtn.dispatch('click', {});
+  reply(ui, 1, SAME_IDS);
+  await flush();
+}
+
+test('ui.html detail stored:true shows the saved count and refreshes the list', async () => {
+  const ui = loadSendingUi({ fetchImpl: detailAnswer({ ok: true, count: 2, receivedAt: 1, detail: { stored: true, tier: 'compact', nodes: 5 } }) });
+  await detailFlow(ui);
+  assert.equal(ui.elements.sendStatus.textContent, 'Деталі збережено (5 вузлів)');
+  assert.equal(ui.elements.sendStatus.className, 'status ok');
+  assert.equal(recordsGets(ui), 1, 'the list is fetched once after the stored detail');
+});
+
+test('ui.html detail stored:false shows the server error, does not refresh the list', async () => {
+  const ui = loadSendingUi({ fetchImpl: detailAnswer({ ok: true, count: 2, receivedAt: 1, detail: { stored: false, error: 'Виділення порожнє' } }) });
+  await detailFlow(ui);
+  assert.equal(ui.elements.sendStatus.textContent, 'Деталі не збережено: Виділення порожнє');
+  assert.equal(ui.elements.sendStatus.className, 'status err');
+  assert.equal(recordsGets(ui), 0, 'nothing was saved, so the list is not refetched');
+  assert.equal(ui.elements.detailBtn.disabled, false);
+});
+
+test('ui.html detail stored:false truncates a long server error to about 120 characters', async () => {
+  const longError = 'е'.repeat(400);
+  const ui = loadSendingUi({ fetchImpl: detailAnswer({ ok: true, detail: { stored: false, error: longError } }) });
+  await detailFlow(ui);
+  const text = ui.elements.sendStatus.textContent;
+  assert.ok(text.startsWith('Деталі не збережено: е'), 'the prefix and the start of the error are kept');
+  assert.ok(text.length <= 'Деталі не збережено: '.length + 120, `too long: ${text.length}`);
+  assert.ok(text.endsWith('…'));
+  assert.equal(ui.elements.sendStatus.className, 'status err');
+});
+
+test('ui.html detail answer without a detail field is an error, not a success', async () => {
+  const ui = loadSendingUi({ fetchImpl: detailAnswer({ ok: true, count: 2, receivedAt: 1 }) });
+  await detailFlow(ui);
+  assert.equal(ui.elements.sendStatus.textContent, 'Сервер не підтвердив збереження деталей');
+  assert.equal(ui.elements.sendStatus.className, 'status err');
+  assert.equal(recordsGets(ui), 0);
+});
+
+test('ui.html detail answer with an unparsable body is a failed request', async () => {
+  const ui = loadSendingUi({ fetchImpl: detailAnswer('garbage') });
+  await detailFlow(ui);
+  assert.equal(ui.elements.sendStatus.textContent, 'Помилка надсилання');
+  assert.equal(ui.elements.sendStatus.className, 'status err');
+  assert.equal(recordsGets(ui), 0);
+  assert.equal(ui.elements.detailBtn.disabled, false);
+});
+
+test('ui.html plain selection POST ignores the body and keeps "Надіслано"', async () => {
+  const ui = loadSendingUi({ fetchImpl: detailAnswer('garbage') });
+  ui.sendSelection('FK1', NODES);
+  await flush();
+  assert.equal(ui.elements.sendStatus.textContent, 'Надіслано');
+  assert.equal(ui.elements.sendStatus.className, 'status ok');
+  assert.equal(recordsGets(ui), 0, 'a plain POST does not refetch the list');
+});
+
 // ---- "Розгортати інстанси" checkbox (session-only, sent with request-detail) ----
 
 function lastDetailRequest(ui) {
@@ -1177,10 +1269,15 @@ const CURRENT_A = {
 };
 
 // Sends /records to recordsImpl; every other URL gets the default health answer.
+// A detail POST gets the server's stored answer, so the list is refreshed; anything else gets the health answer.
 function withRecords(recordsImpl) {
-  return (url, init) => (url === RECORDS_URL
-    ? recordsImpl(url, init)
-    : healthResponse({ ok: true, authorized: true })(url, init));
+  return (url, init) => {
+    if (url === RECORDS_URL) return recordsImpl(url, init);
+    if (init && init.method === 'POST' && 'detail' in JSON.parse(init.body)) {
+      return detailAnswer({ ok: true, count: 2, receivedAt: 1, detail: { stored: true, tier: 'compact', nodes: 2 } })(url, init);
+    }
+    return healthResponse({ ok: true, authorized: true })(url, init);
+  };
 }
 
 function recordsCalls(ui) {

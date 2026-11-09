@@ -6,7 +6,8 @@ import { renderDetail } from './compact-text.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT) || 3846;
-const BODY_LIMIT = 100 * 1024;
+// Large enough for a full tier B detail (300 records, 200 overrides of up to ~200 characters per instance).
+const BODY_LIMIT = 1024 * 1024;
 const ALLOWED_ORIGINS = new Set(['https://www.figma.com']);
 const PROTOCOL_VERSION = '2024-11-05';
 
@@ -82,9 +83,13 @@ function validateNote(note) {
 }
 
 // Optional compact `detail` (PLUGIN_COMPACT_DUMP_SPEC §4.1, §2.1, §3).
-const DETAIL_MAX_NESTING = 8;
-const DETAIL_MAX_RECORDS = 400;
+// Nesting: roots are level 1; the plugin expands depth 0-6 (levels 1-7) and an INSTANCE lists 3 more levels
+// below itself (plugin INSTANCE_LIST_DEPTH), so an instance at depth 6 reaches level 10.
+const DETAIL_MAX_NESTING = 10;
+const DETAIL_MAX_RECORDS = 400; // the plugin never emits more than maxNodes (<= 300) records
+// Longer strings are cut, not rejected: "<first 288 chars>…(+N)" stays within DETAIL_MAX_STRING.
 const DETAIL_MAX_STRING = 300;
+const DETAIL_CLAMP_KEEP = 288;
 const DETAIL_RECORD_KEYS = new Set(['id', 'n', 't', 'w', 'h', 'L', 'sz', 'abs', 'f', 's', 'r', 'o', 'e', 'ts', 'tx', 'c', 'v', 'p', 'ot', 'oi', 'cn', 'ch', 'hid']);
 const DETAIL_GROUP_KEYS = new Set(['x', 'tpl', 'items']);
 const DETAIL_INCLUDE_KEYS = ['geometry', 'layout', 'paint', 'text', 'instance', 'hidden'];
@@ -93,7 +98,8 @@ const DETAIL_INCLUDE = new Set(DETAIL_INCLUDE_KEYS);
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isIntInRange = (v, min, max) => Number.isInteger(v) && v >= min && v <= max;
 
-// Returns { error: string } or { error: null, tier, nodes }, where nodes counts records and groups.
+// Returns { error: string } or { error: null, tier, nodes, detail }, where nodes counts records and groups and
+// detail is the stored copy (overlong strings cut).
 function validateDetail(d) {
   const fail = (error) => ({ error });
   if (!isPlainObject(d)) return fail('detail must be a JSON object');
@@ -113,16 +119,15 @@ function validateDetail(d) {
 
   const counter = { records: 0 };
   for (const root of d.roots) {
-    const error = checkEntry(root, 1, counter);
+    const error = checkEntry(root, 1, counter, false);
     if (error) return fail(error);
   }
-  const stringError = checkStrings(d);
-  if (stringError) return fail(stringError);
-  return { error: null, tier: d.tier, nodes: counter.records };
+  return { error: null, tier: d.tier, nodes: counter.records, detail: clampStrings(d) };
 }
 
 // A roots/ch entry is a record, a group {x, tpl, items}, or a truncation marker string such as "…+12 nodes".
-function checkEntry(entry, level, counter) {
+// `template` is true below a group's tpl: the plugin's template records carry no id (they stand for many nodes).
+function checkEntry(entry, level, counter, template) {
   if (typeof entry === 'string') return null;
   if (!isPlainObject(entry)) return 'detail entries must be objects or strings';
   if (level > DETAIL_MAX_NESTING) return `detail nesting must be at most ${DETAIL_MAX_NESTING} levels`;
@@ -132,37 +137,42 @@ function checkEntry(entry, level, counter) {
   for (const key of Object.keys(entry)) {
     if (!DETAIL_RECORD_KEYS.has(key)) return `unknown key "${key}" in detail record`;
   }
-  if (typeof entry.id !== 'string' || typeof entry.t !== 'string') return 'detail record needs string id and t';
+  const idOk = entry.id === undefined ? template : typeof entry.id === 'string';
+  if (!idOk || typeof entry.t !== 'string') return 'detail record needs string id and t';
   if (entry.ch !== undefined) {
     if (!Array.isArray(entry.ch)) return 'ch must be an array';
     for (const child of entry.ch) {
-      const error = checkEntry(child, level + 1, counter);
+      const error = checkEntry(child, level + 1, counter, template);
       if (error) return error;
     }
   }
   return null;
 }
 
+// items (folded rows) are present on a group in a record's ch, and absent on a group inside a template.
 function checkGroup(group, level, counter) {
   for (const key of Object.keys(group)) {
     if (!DETAIL_GROUP_KEYS.has(key)) return `unknown key "${key}" in detail group`;
   }
   if (typeof group.x !== 'number') return 'detail group needs numeric x';
-  const itemsOk = Array.isArray(group.items) && group.items.every((row) => Array.isArray(row) && row.every((s) => typeof s === 'string'));
-  if (!itemsOk) return 'detail group items must be arrays of strings';
-  return checkEntry(group.tpl, level + 1, counter);
+  if (group.items !== undefined) {
+    const itemsOk = Array.isArray(group.items) && group.items.every((row) => Array.isArray(row) && row.every((s) => typeof s === 'string'));
+    if (!itemsOk) return 'detail group items must be arrays of strings';
+  }
+  return checkEntry(group.tpl, level + 1, counter, true);
 }
 
-function checkStrings(value) {
+// Replaces every string longer than DETAIL_MAX_STRING (code points) by its first DETAIL_CLAMP_KEEP characters
+// and an explicit "…(+N)" cut, the same form the plugin uses. Keys and other values are kept as they are.
+function clampStrings(value) {
   if (typeof value === 'string') {
-    return [...value].length > DETAIL_MAX_STRING ? `detail strings must be at most ${DETAIL_MAX_STRING} characters` : null;
+    const chars = [...value];
+    if (chars.length <= DETAIL_MAX_STRING) return value;
+    return `${chars.slice(0, DETAIL_CLAMP_KEEP).join('')}…(+${chars.length - DETAIL_CLAMP_KEEP})`;
   }
-  const children = Array.isArray(value) ? value : isPlainObject(value) ? Object.values(value) : [];
-  for (const child of children) {
-    const error = checkStrings(child);
-    if (error) return error;
-  }
-  return null;
+  if (Array.isArray(value)) return value.map(clampStrings);
+  if (isPlainObject(value)) return Object.fromEntries(Object.entries(value).map(([key, v]) => [key, clampStrings(v)]));
+  return value;
 }
 
 // Identifies the stored selection and detail (spec §4.1: sha1(fileKey + ids + JSON(detail))).
@@ -380,7 +390,7 @@ const server = http.createServer((req, res) => {
       } else if (nodes.length === 0) {
         reply.detail = { stored: false, error: 'selection is empty, detail not stored' };
       } else {
-        detail = data.detail;
+        detail = check.detail;
         reply.detail = { stored: true, tier: check.tier, nodes: check.nodes };
         log(`detail tier=${check.tier} nodes=${check.nodes} json=${Buffer.byteLength(JSON.stringify(detail))}B`);
       }
