@@ -1,40 +1,57 @@
-Below are the steps to get your plugin running. You can also find instructions at:
+# Copy Node ID → Claude
 
-  https://www.figma.com/plugin-docs/plugin-quickstart-guide/
+Плагін для Figma, який показує ID виділених елементів і передає їх Claude. Поруч працює локальний сервер (MCP через stdio + HTTP на `127.0.0.1`): плагін надсилає виділення й компактний опис вузлів, а Claude читає їх інструментами MCP.
 
-This plugin template uses Typescript and NPM, two standard tools in creating JavaScript applications.
+## Швидкий старт
 
-First, download Node.js which comes with NPM. This will allow you to install TypeScript and other
-libraries. You can find the download link here:
+```bash
+npm install
+npm run build        # збирає code.ts → code.js
+```
 
-  https://nodejs.org/en/download/
+1. У Figma Desktop: **Plugins → Development → Import plugin from manifest…** і вкажіть `manifest.json` цього проєкту.
+2. Запустіть плагін у будь-якому файлі. Виділіть елемент: ID з'явиться в панелі.
+3. Щоб Claude бачив виділення, запустіть сервер і підключіть його як MCP. Деталі й змінні середовища — у [server/README.md](server/README.md). Приклад команди для `claude mcp add` (її виконує користувач):
 
-Next, install TypeScript using the command:
+   ```bash
+   claude mcp add figma-selection -e FIGMA_SELECTION_TOKEN=my-secret -- node /абсолютний/шлях/server/index.js
+   ```
 
-  npm install -g typescript
+   Токен, введений у полі «Токен» плагіна, має збігатися з `FIGMA_SELECTION_TOKEN`.
 
-Finally, in the directory of your plugin, get the latest type definitions for the plugin API by running:
+## Можливості
 
-  npm install --save-dev @figma/plugin-typings
+- **Виділення:** список `id`, назв і типів виділених вузлів, оновлюється при зміні виділення.
+- **Копіювання** у форматах: `id`, `id + name`, `link` (посилання `…/design/<fileKey>/?node-id=…`) і «Claude text» (`Figma nodes: …`).
+- **Надсилання в Claude:** POST `/selection` на локальний сервер з токеном у заголовку `x-token`.
+- **Деталі:** кнопки «Додати деталі» і «Додати деталі з коментарем» збирають компактний опис (структура, auto-layout, змінні й стилі, тексти, інстанси). Галочка «Розгортати інстанси» вмикає вміст інстансів (більше токенів).
+- **Записи:** вкладка «Записи (N)» показує останні збережені записи з деталями (N — кількість зі статусом `new`). Запис можна позначити виконаним або повернути в нові.
+- **Згортання:** вікно згортається до смужки заголовка.
+- **MCP-інструменти:** `get_figma_selection` (старий формат), `get_figma_selection_detail`, `list_figma_selections`, `mark_figma_selection_done`.
 
-If you are familiar with JavaScript, TypeScript will look very familiar. In fact, valid JavaScript code
-is already valid Typescript code.
+## Команди
 
-TypeScript adds type annotations to variables. This allows code editors such as Visual Studio Code
-to provide information about the Figma API while you are writing code, as well as help catch bugs
-you previously didn't notice.
+| Команда | Що робить |
+|---|---|
+| `npm run build` | збирає `code.ts` у `code.js` (`tsc`) |
+| `npm test` | `tsc` + тести `node:test` з `tests/` |
+| `npx eslint .` | перевірка стилю й типів ESLint |
 
-For more information, visit https://www.typescriptlang.org/
+## Структура
 
-Using TypeScript requires a compiler to convert TypeScript (code.ts) into JavaScript (code.js)
-for the browser to run.
+- `code.ts` — основний код плагіна (Figma API, збірка деталей)
+- `ui.html` — інтерфейс плагіна (підключається через `figma.showUI(__html__)`)
+- `manifest.json` — маніфест плагіна (приватний, див. нижче)
+- `server/` — локальний сервер: `index.js` (HTTP + MCP), `compact-text.js` (рендерер), `README.md`
+- `tests/` — тести сервера, UI, компактного опису й коду плагіна
+- `design/` — візуальний напрямок інтерфейсу та референси
+- `docs/` — технічні документи (ТЗ; папка створюється)
+- `plan.md` — план робіт і рішення
+- `PLUGIN_COMPACT_DUMP_SPEC.md` — специфікація компактного опису
+- `CLAUDE.md` — правила роботи з агентами в цьому проєкті
 
-We recommend writing TypeScript code using Visual Studio code:
+## Примітки
 
-1. Download Visual Studio Code if you haven't already: https://code.visualstudio.com/.
-2. Open this directory in Visual Studio Code.
-3. Compile TypeScript to JavaScript: Run the "Terminal > Run Build Task..." menu item,
-    then select "npm: watch". You will have to do this again every time
-    you reopen Visual Studio Code.
-
-That's it! Visual Studio Code will regenerate the JavaScript file every time you save.
+- Плагін **приватний**: `manifest.json` містить `enablePrivatePluginApi: true` (потрібен для `figma.fileKey`). Це налаштування для приватного плагіна, а не для публікації в каталозі Figma.
+- Сервер слухає лише `127.0.0.1` і працює, доки живий MCP-процес. Записи зберігаються в пам'яті, на диск нічого не пишеться.
+- Робочі правила для агентів (хто що робить, перевірки після змін, коміти) — у [CLAUDE.md](CLAUDE.md).
