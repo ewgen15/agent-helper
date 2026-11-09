@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мокап: Виділені ноди</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ---- Tokens: light (default) ---- */
+  :root {
+    --backdrop: #e8e8ec;
+    --bg-a: #fde3d6;          /* персиковий */
+    --bg-b: #ece4fb;          /* лавандовий */
+    --bg-c: #d9ebfd;          /* блакитний */
+    --card: rgba(255, 255, 255, 0.78);
+    --card-solid: #ffffff;
+    --card-edge: rgba(255, 255, 255, 0.85);
+    --line: rgba(27, 29, 42, 0.10);
+    --fg: #1b1d2a;
+    --muted: #555b6e;         /* 6.5:1 на білому, ≥4.5 на пастелі */
+    --accent: #0a66f0;        /* єдиний яскравий синій */
+    --accent-fg: #ffffff;
+    --ok: #13703a;
+    --err: #a4191b;
+    --err-bg: #ffe0df;
+    --tile-blue: #cfe4ff;   --tile-blue-fg: #0a3d8c;
+    --tile-green: #cdf3dc;  --tile-green-fg: #0f5a2e;
+    --tile-lav: #e4d9ff;    --tile-lav-fg: #3d2585;
+    --tag-text-bg: #ffe6d6; --tag-text-fg: #7d3b12;
+    --tag-inst-bg: #ebe2ff; --tag-inst-fg: #4a2c9c;
+    --tag-comp-bg: #d9f6e3; --tag-comp-fg: #15602f;
+    --tag-frame-bg: #dbe9ff; --tag-frame-fg: #174a94;
+    --shadow: 0 10px 28px rgba(70, 60, 130, 0.14);
+  }
+  /* ---- Tokens: dark (system preference, unless data-theme="light") ---- */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --backdrop: #15161d;
+      --bg-a: #3a2a33;
+      --bg-b: #2c2740;
+      --bg-c: #223048;
+      --card: rgba(38, 40, 56, 0.82);
+      --card-solid: #262838;
+      --card-edge: rgba(255, 255, 255, 0.10);
+      --line: rgba(255, 255, 255, 0.12);
+      --fg: #f2f3f8;
+      --muted: #b9bfd0;
+      --accent: #2563eb;
+      --accent-fg: #ffffff;
+      --ok: #6ee7a0;
+      --err: #ff9a9a;
+      --err-bg: #5a2222;
+      --tile-blue: #1e3a66;   --tile-blue-fg: #cfe3ff;
+      --tile-green: #1f4a35;  --tile-green-fg: #c9f5da;
+      --tile-lav: #352b5e;    --tile-lav-fg: #e3dbff;
+      --tag-text-bg: #5a3a26; --tag-text-fg: #ffe0cc;
+      --tag-inst-bg: #3a2d62; --tag-inst-fg: #e3dbff;
+      --tag-comp-bg: #1f4a35; --tag-comp-fg: #c9f5da;
+      --tag-frame-bg: #1f3a63; --tag-frame-fg: #cfe3ff;
+      --shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --backdrop: #15161d;
+    --bg-a: #3a2a33;
+    --bg-b: #2c2740;
+    --bg-c: #223048;
+    --card: rgba(38, 40, 56, 0.82);
+    --card-solid: #262838;
+    --card-edge: rgba(255, 255, 255, 0.10);
+    --line: rgba(255, 255, 255, 0.12);
+    --fg: #f2f3f8;
+    --muted: #b9bfd0;
+    --accent: #2563eb;
+    --accent-fg: #ffffff;
+    --ok: #6ee7a0;
+    --err: #ff9a9a;
+    --err-bg: #5a2222;
+    --tile-blue: #1e3a66;   --tile-blue-fg: #cfe3ff;
+    --tile-green: #1f4a35;  --tile-green-fg: #c9f5da;
+    --tile-lav: #352b5e;    --tile-lav-fg: #e3dbff;
+    --tag-text-bg: #5a3a26; --tag-text-fg: #ffe0cc;
+    --tag-inst-bg: #3a2d62; --tag-inst-fg: #e3dbff;
+    --tag-comp-bg: #1f4a35; --tag-comp-fg: #c9f5da;
+    --tag-frame-bg: #1f3a63; --tag-frame-fg: #cfe3ff;
+    --shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 32px 20px 48px;
+    background: var(--backdrop);
+    color: var(--fg);
+    font-family: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  header.page { max-width: 1240px; margin: 0 auto 24px; }
+  header.page h1 { margin: 0 0 4px; font-size: 20px; font-weight: 800; }
+  header.page p { margin: 0; color: var(--muted); font-weight: 600; }
+
+  .gallery {
+    max-width: 1240px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 32px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  figure { margin: 0; width: 380px; max-width: 100%; display: flex; flex-direction: column; gap: 10px; }
+  figcaption { font-size: 13px; font-weight: 800; }
+  figcaption small { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--muted); }
+
+  /* ---- Plugin window: 380 px wide ---- */
+  .plugin {
+    position: relative;
+    width: 380px;
+    max-width: 100%;
+    height: 520px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: hidden;
+    border-radius: 24px;
+    background: linear-gradient(165deg, var(--bg-a) 0%, var(--bg-b) 48%, var(--bg-c) 100%);
+    box-shadow: var(--shadow);
+  }
+  .plugin::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.65), transparent 55%);
+  }
+  .plugin > * { position: relative; }
+  .plugin.is-collapsed { height: 56px; }
+  .plugin.is-collapsed .content { display: none; }
+  .plugin.is-bar {
+    height: 56px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    border-radius: 18px;
+  }
+
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex: none; min-width: 0; }
+  .brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .logo {
+    flex: none;
+    width: 26px; height: 26px; border-radius: 9px;
+    display: grid; place-items: center;
+    background: var(--accent); color: var(--accent-fg);
+    font-size: 13px; font-weight: 800;
+  }
+  .head h2 { margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head-end { display: flex; align-items: center; gap: 6px; flex: none; }
+
+  .pill {
+    display: inline-flex; align-items: center;
+    padding: 3px 8px; border-radius: 999px;
+    background: var(--card-solid); border: 1px solid var(--line);
+    color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap;
+  }
+
+  .content {
+    flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column; gap: 10px;
+    overflow-y: auto; padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+  .panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+  /* Floating pill tab bar */
+  .tabs {
+    flex: none;
+    display: flex; gap: 2px; padding: 3px;
+    background: var(--card); border: 1px solid var(--card-edge);
+    border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(70, 60, 130, 0.08);
+  }
+  .tab {
+    flex: 1 1 auto;
+    border: 0; background: transparent; cursor: pointer;
+    padding: 6px 10px; border-radius: 999px;
+    font: inherit; font-weight: 700; font-size: 12px; color: var(--muted);
+    white-space: nowrap;
+  }
+  .tab[aria-selected="true"] {
+    background: var(--accent); color: var(--accent-fg);
+    box-shadow: 0 4px 10px rgba(10, 102, 240, 0.25);
+  }
+  button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-edge);
+    border-radius: 16px;
+    box-shadow: 0 4px 14px rgba(70, 60, 130, 0.07);
+    padding: 8px;
+  }
+
+  /* Selected nodes */
+  .list { list-style: none; margin: 0; display: flex; flex-direction: column; padding: 4px; }
+  .node { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; }
+  .node + .node { border-top: 1px solid var(--line); }
+  .node-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; min-width: 0; }
+  .node-name { font-weight: 700; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node-id { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .tag { flex: none; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.03em; }
+  .t-text { background: var(--tag-text-bg); color: var(--tag-text-fg); }
+  .t-inst { background: var(--tag-inst-bg); color: var(--tag-inst-fg); }
+  .t-comp { background: var(--tag-comp-bg); color: var(--tag-comp-fg); }
+  .t-frame { background: var(--tag-frame-bg); color: var(--tag-frame-fg); }
+
+  /* Form controls */
+  .field { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .field > label { color: var(--muted); font-weight: 700; }
+  select, input[type="password"], textarea {
+    font: inherit; font-size: 12px; color: var(--fg);
+    background: var(--card-solid); border: 1px solid var(--line);
+    border-radius: 10px; padding: 6px 8px;
+  }
+  select { min-width: 150px; }
+  input[type="password"] { width: 180px; }
+  textarea { width: 100%; resize: none; }
+  .check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
+  .check input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); }
+
+  .btn {
+    font: inherit; font-size: 12px; font-weight: 700;
+    padding: 7px 14px; border-radius: 999px; border: 1px solid transparent;
+    cursor: pointer; white-space: nowrap;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-fg); box-shadow: 0 4px 12px rgba(10, 102, 240, 0.25); }
+  .btn.secondary { background: var(--card-solid); color: var(--fg); border-color: var(--line); }
+  .btn.sm { padding: 4px 10px; font-size: 11px; }
+  .btn.wide { width: 100%; }
+
+  .send { display: flex; flex-direction: column; gap: 8px; }
+  .health { margin: 0; font-size: 12px; font-weight: 800; color: var(--ok); }
+  .count { color: var(--muted); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cbox { display: flex; flex-direction: column; gap: 6px; }
+  .cbox-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .cbox-head label { color: var(--muted); font-weight: 700; }
+  .cbox .btn { align-self: flex-end; }
+
+  .status { font-size: 12px; font-weight: 800; color: var(--ok); }
+  .err-box {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 10px; border-radius: 12px;
+    background: var(--err-bg); color: var(--err);
+    font-weight: 800; font-size: 12px;
+  }
+  .err-box::before { content: "●"; flex: none; }
+
+  /* Записи */
+  .rec-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .summary { color: var(--muted); font-weight: 700; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .tile { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px; border-radius: 16px; }
+  .tile .lbl { font-size: 11px; font-weight: 800; }
+  .tile .num { font-size: 26px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .tile .sub { font-size: 10px; font-weight: 700; }
+  .t-blue { background: var(--tile-blue); color: var(--tile-blue-fg); }
+  .t-green { background: var(--tile-green); color: var(--tile-green-fg); }
+  .t-lav { background: var(--tile-lav); color: var(--tile-lav-fg); }
+
+  .cur { display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; padding: 8px 10px; border-radius: 14px; background: var(--card-solid); border: 1px dashed var(--line); font-weight: 600; color: var(--fg); }
+  .cur .lbl { color: var(--muted); font-style: italic; font-weight: 700; }
+
+  .recs { display: flex; flex-direction: column; gap: 8px; }
+  .rec { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+  .rec.is-done { background: rgba(255, 255, 255, 0.40); }
+  .rec-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0; }
+  .rec-title { font-size: 13px; font-weight: 800; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rec-time { flex: none; color: var(--muted); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rec-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+  .rec-meta .btn { margin-left: auto; }
+  .rec.is-done .rec-title { color: var(--muted); }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; }
+  .b-new { background: var(--tile-blue); color: var(--tile-blue-fg); }
+  .b-done { background: var(--card-solid); color: var(--muted); border: 1px solid var(--line); }
+
+  /* Plugin-level collapse bar */
+  .bar-title { margin: 0; font-size: 14px; font-weight: 800; white-space: nowrap; }
+  .bar-end { display: flex; align-items: center; gap: 8px; }
+
+  .note { margin: 0; color: var(--muted); font-size: 11px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header class="page">
+  <h1>Мокап: плагін «Виділені ноди»</h1>
+  <p>Пастельний стиль референсу Meal Genius, вікно плагіна 380 px. Статичний макет: кнопки «Згорнути» і вкладки в кадрах 1 і 4 працюють.</p>
+</header>
+
+<main class="gallery">
+
+  <!-- 1. Виділення, розгорнуто -->
+  <figure>
+    <figcaption>1 · Вкладка «Виділення», розгорнуто
+      <small>380×520 · вміст прокручується</small>
+    </figcaption>
+    <section class="plugin" data-frame aria-label="Плагін: вкладка Виділення">
+      <header class="head">
+        <div class="brand">
+          <span class="logo" aria-hidden="true">✦</span>
+          <h2>Виділені ноди</h2>
+        </div>
+        <div class="head-end">
+          <span class="pill">Вибрано: 3</span>
+          <button class="btn secondary sm collapse" type="button" aria-expanded="true">▾ Згорнути</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="tabs" role="tablist" aria-label="Розділи">
+          <button class="tab" type="button" role="tab" id="f1-tab-sel" aria-selected="true" aria-controls="f1-panel-sel" tabindex="0">Виділення</button>
+          <button class="tab" type="button" role="tab" id="f1-tab-rec" aria-selected="false" aria-controls="f1-panel-rec" tabindex="-1">Записи (2)</button>
+        </div>
+
+        <div class="panel" id="f1-panel-sel" role="tabpanel" aria-labelledby="f1-tab-sel">
+          <ul class="list card" aria-label="Виділені ноди">
+            <li class="node">
+              <div class="node-top"><span class="node-name">Hero / Title</span><span class="tag t-text">TEXT</span></div>
+              <span class="node-id">12:48</span>
+            </li>
+            <li class="node">
+              <div class="node-top"><span class="node-name">Button / Primary</span><span class="tag t-inst">INSTANCE</span></div>
+              <span class="node-id">12:57</span>
+            </li>
+            <li class="node">
+              <div class="node-top"><span class="node-name">Card / Avocado</span><span class="tag t-comp">COMPONENT</span></div>
+              <span class="node-id">14:103</span>
+            </li>
+          </ul>
+
+          <div class="field">
+            <label for="f1-fmt">Формат</label>
+            <select id="f1-fmt">
+              <option selected>id</option>
+              <option>id + name</option>
+              <option>link</option>
+              <option>Claude text</option>
+            </select>
+          </div>
+
+          <label class="check"><input type="checkbox"> Автокопіювання при виборі</label>
+
+          <button class="btn primary wide" type="button">Копіювати</button>
+          <p class="status" role="status">Скопійовано</p>
+
+          <div class="card send">
+            <label class="check"><input type="checkbox" checked> Відправити в Claude</label>
+            <div class="field">
+              <label for="f1-tok">Токен</label>
+              <input type="password" id="f1-tok" value="figma-token-2026" autocomplete="off" spellcheck="false">
+            </div>
+            <p class="health" role="status">● Сервер працює</p>
+            <label class="check"><input type="checkbox"> Розгортати інстанси</label>
+            <button class="btn primary wide" type="button">Додати деталі</button>
+            <button class="btn secondary wide" type="button" aria-expanded="true" aria-controls="f1-cbox">Додати деталі з коментарем</button>
+            <div class="cbox" id="f1-cbox">
+              <div class="cbox-head">
+                <label for="f1-cm">Коментар для Claude</label>
+                <span class="count">42/2000</span>
+              </div>
+              <textarea id="f1-cm" rows="2" maxlength="2000">Перевір відступи в картці: вони різні у двох рядах.</textarea>
+              <button class="btn primary sm" type="button">Відправити</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Вміст вкладки «Записи» підставляється з кадру 2 (див. скрипт внизу) -->
+        <div class="panel" id="f1-panel-rec" role="tabpanel" aria-labelledby="f1-tab-rec" data-records-slot hidden></div>
+      </div>
+    </section>
+  </figure>
+
+  <!-- 2. Записи -->
+  <figure>
+    <figcaption>2 · Вкладка «Записи»
+      <small>380×520 · пастельні лічильники і записи</small>
+    </figcaption>
+    <section class="plugin" data-frame data-static-tabs aria-label="Плагін: вкладка Записи">
+      <header class="head">
+        <div class="brand">
+          <span class="logo" aria-hidden="true">✦</span>
+          <h2>Виділені ноди</h2>
+        </div>
+        <div class="head-end">
+          <span class="pill">Вибрано: 3</span>
+          <button class="btn secondary sm" type="button" aria-expanded="true">▾ Згорнути</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="tabs" role="tablist" aria-label="Розділи">
+          <button class="tab" type="button" role="tab" aria-selected="false" tabindex="-1">Виділення</button>
+          <button class="tab" type="button" role="tab" aria-selected="true" tabindex="0">Записи (2)</button>
+        </div>
+
+        <div class="panel" id="panel-rec-src" role="tabpanel" data-records-src>
+          <div class="tiles">
+            <div class="tile t-blue"><span class="lbl">Нові</span><span class="num">2</span><span class="sub">записи</span></div>
+            <div class="tile t-green"><span class="lbl">Виконано</span><span class="num">1</span><span class="sub">записи</span></div>
+            <div class="tile t-lav"><span class="lbl">Поточне</span><span class="num">3</span><span class="sub">вузли</span></div>
+          </div>
+
+          <div class="rec-head">
+            <span class="summary">2 нових з 3</span>
+            <button class="btn secondary sm" type="button">Оновити</button>
+          </div>
+
+          <div class="cur">
+            <span class="lbl">Поточне:</span>
+            <span>10:44:02 · a1b2c3… · 3 вузли · Card / Avocado</span>
+          </div>
+
+          <div class="recs">
+            <article class="card rec">
+              <div class="rec-top"><span class="rec-title">Card / Avocado</span><span class="rec-time">10:42:17</span></div>
+              <div class="rec-meta">
+                <span class="badge b-new">нове</span>
+                <span>a1b2c3… · 3 вузли</span>
+                <button class="btn primary sm" type="button">Позначити виконаним</button>
+              </div>
+            </article>
+
+            <article class="card rec">
+              <div class="rec-top"><span class="rec-title">Button / Primary</span><span class="rec-time">10:31:05</span></div>
+              <div class="rec-meta">
+                <span class="badge b-new">нове</span>
+                <span>a1b2c3… · 2 вузли</span>
+                <button class="btn primary sm" type="button">Позначити виконаним</button>
+              </div>
+            </article>
+
+            <article class="card rec is-done">
+              <div class="rec-top"><span class="rec-title">Hero section</span><span class="rec-time">09:58:44</span></div>
+              <div class="rec-meta">
+                <span class="badge b-done">виконано</span>
+                <span>d4e5f6… · 5 вузлів</span>
+                <button class="btn secondary sm" type="button">Повернути в нові</button>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+  </figure>
+
+  <!-- 3. Згорнуто -->
+  <figure>
+    <figcaption>3 · Згорнуто
+      <small>380×56 · «▸ Розгорнути»</small>
+    </figcaption>
+    <section class="plugin is-bar" aria-label="Плагін згорнуто">
+      <h2 class="bar-title">Виділені ноди</h2>
+      <div class="bar-end">
+        <span class="pill">3 вузли</span>
+        <button class="btn secondary sm" type="button" aria-expanded="false">▸ Розгорнути</button>
+      </div>
+    </section>
+  </figure>
+
+  <!-- 4. Помилка -->
+  <figure>
+    <figcaption>4 · Помилка збереження деталей
+      <small>380×520 · стан помилки</small>
+    </figcaption>
+    <section class="plugin" data-frame aria-label="Плагін: помилка збереження деталей">
+      <header class="head">
+        <div class="brand">
+          <span class="logo" aria-hidden="true">✦</span>
+          <h2>Виділені ноди</h2>
+        </div>
+        <div class="head-end">
+          <span class="pill">Вибрано: 3</span>
+          <button class="btn secondary sm collapse" type="button" aria-expanded="true">▾ Згорнути</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="tabs" role="tablist" aria-label="Розділи">
+          <button class="tab" type="button" role="tab" id="f4-tab-sel" aria-selected="true" aria-controls="f4-panel-sel" tabindex="0">Виділення</button>
+          <button class="tab" type="button" role="tab" id="f4-tab-rec" aria-selected="false" aria-controls="f4-panel-rec" tabindex="-1">Записи (2)</button>
+        </div>
+
+        <div class="panel" id="f4-panel-sel" role="tabpanel" aria-labelledby="f4-tab-sel">
+          <ul class="list card" aria-label="Виділені ноди">
+            <li class="node">
+              <div class="node-top"><span class="node-name">Hero / Title</span><span class="tag t-text">TEXT</span></div>
+              <span class="node-id">12:48</span>
+            </li>
+            <li class="node">
+              <div class="node-top"><span class="node-name">Button / Primary</span><span class="tag t-inst">INSTANCE</span></div>
+              <span class="node-id">12:57</span>
+            </li>
+            <li class="node">
+              <div class="node-top"><span class="node-name">Card / Avocado</span><span class="tag t-comp">COMPONENT</span></div>
+              <span class="node-id">14:103</span>
+            </li>
+          </ul>
+
+          <div class="card send">
+            <label class="check"><input type="checkbox" checked> Відправити в Claude</label>
+            <div class="field">
+              <label for="f4-tok">Токен</label>
+              <input type="password" id="f4-tok" value="figma-token-2026" autocomplete="off" spellcheck="false">
+            </div>
+            <p class="health" role="status">● Сервер працює</p>
+            <label class="check"><input type="checkbox"> Розгортати інстанси</label>
+            <button class="btn primary wide" type="button">Додати деталі</button>
+            <button class="btn secondary wide" type="button" aria-expanded="false" aria-controls="f4-cbox">Додати деталі з коментарем</button>
+            <div class="err-box" role="status">Деталі не збережено: detail must have at most 400 records</div>
+          </div>
+        </div>
+
+        <div class="panel" id="f4-panel-rec" role="tabpanel" aria-labelledby="f4-tab-rec" data-records-slot hidden></div>
+      </div>
+    </section>
+  </figure>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // Вміст вкладки «Записи» береться з кадру 2 і підставляється в кадри 1 і 4.
+  var source = document.querySelector('[data-records-src]');
+  document.querySelectorAll('[data-records-slot]').forEach(function (slot) {
+    if (source) slot.innerHTML = source.innerHTML;
+  });
+
+  function selectTab(frame, tab) {
+    var target = tab.getAttribute('aria-controls');
+    frame.querySelectorAll('[role="tab"]').forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+    });
+    frame.querySelectorAll('[role="tabpanel"]').forEach(function (p) {
+      p.hidden = p.id !== target;
+    });
+  }
+
+  document.querySelectorAll('[data-frame]').forEach(function (frame) {
+    if (frame.hasAttribute('data-static-tabs')) return;
+
+    frame.querySelectorAll('[role="tab"]').forEach(function (tab) {
+      tab.addEventListener('click', function () { selectTab(frame, tab); });
+    });
+
+    var collapse = frame.querySelector('.collapse');
+    if (collapse) {
+      collapse.addEventListener('click', function () {
+        var collapsed = frame.classList.toggle('is-collapsed');
+        collapse.textContent = collapsed ? '▸ Розгорнути' : '▾ Згорнути';
+        collapse.setAttribute('aria-expanded', String(!collapsed));
+      });
+    }
+  });
+})();
+</script>
+</body>
+</html>
