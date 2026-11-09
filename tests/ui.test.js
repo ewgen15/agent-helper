@@ -1627,7 +1627,7 @@ test('ui.html records: the current row is hidden while sending is off or before 
 test('ui.html records markup: the current row is a muted line above the list', () => {
   assert.match(HTML, /<div id="recordsCurrent" class="records-current" hidden><\/div>\s*<div id="recordsList"/);
   assert.match(HTML, /\.rec-cur-label \{ color: var\(--muted\)/);
-  assert.match(HTML, /\.records-current \{ border-bottom: 1px solid var\(--border\)/);
+  assert.match(HTML, /\.records-current \{ background: var\(--card-solid\); border: 1px dashed var\(--line\)/);
 });
 
 test('ui.html records do not refresh after a failed POST', async () => {
@@ -1894,7 +1894,7 @@ test('ui.html records: a token edit refreshes the list only while sending is on'
 test('ui.html collapse markup and CSS: the header stays, body.collapsed hides the content', () => {
   assert.match(HTML, /<button id="collapseBtn"[^>]*aria-expanded="true"[^>]*aria-controls="content"[^>]*>▾ Згорнути<\/button>/);
   assert.match(HTML, /<div id="content" class="content">/);
-  assert.match(HTML, /body\.collapsed \.content \{ display: none; \}/);
+  assert.match(HTML, /body\.collapsed \.content,\s*body\.collapsed \.tabs \{ display: none; \}/);
 });
 
 test('ui.html collapse button posts resize with the boolean and toggles the body class', () => {
@@ -1945,4 +1945,22 @@ test('ui.html keeps auto-copy and sending working while collapsed', async () => 
   await flush();
   assert.deepEqual(clip.writes, ['1:2\n1:3'], 'auto-copy still fires');
   assert.equal(postCalls(ui).length, 1, 'the selection is still sent');
+});
+
+test('ui.html loads no external resources: only the localhost server URLs and the figma.com link format', () => {
+  const urls = HTML.match(/https?:\/\/[^\s"'`<>)]+/g) || [];
+  assert.ok(urls.length > 0);
+  const allowed = /^(http:\/\/localhost:3846\/|https:\/\/www\.figma\.com\/design\/)/;
+  for (const url of urls) assert.match(url, allowed, `unexpected URL: ${url}`);
+  assert.doesNotMatch(HTML, /<link\b/i, 'no <link> (no Google Fonts or other stylesheets)');
+  assert.doesNotMatch(HTML, /<script\b[^>]*\bsrc=/i, 'no external scripts');
+  assert.doesNotMatch(HTML, /@import|url\(\s*['"]?https?:/i, 'no external CSS resources');
+});
+
+test('ui.html is always light: color-scheme light is set', () => {
+  assert.match(HTML, /color-scheme:\s*light\b/);
+});
+
+test('ui.html ignores the system or Figma theme: no prefers-color-scheme', () => {
+  assert.doesNotMatch(HTML, /prefers-color-scheme/);
 });

@@ -1,14 +1,15 @@
 <!doctype html>
-<html lang="uk">
+<html lang="uk" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Мокап: Виділені ноди</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  /* ---- Tokens: light (default) ---- */
+  /* ---- Tokens: light (default, always on) ---- */
   :root {
-    --backdrop: #e8e8ec;
+    color-scheme: light;
+    --backdrop: #eef0f6;
     --bg-a: #fde3d6;          /* персиковий */
     --bg-b: #ece4fb;          /* лавандовий */
     --bg-c: #d9ebfd;          /* блакитний */
@@ -16,9 +17,10 @@
     --card-solid: #ffffff;
     --card-edge: rgba(255, 255, 255, 0.85);
     --line: rgba(27, 29, 42, 0.10);
-    --fg: #1b1d2a;
-    --muted: #555b6e;         /* 6.5:1 на білому, ≥4.5 на пастелі */
-    --accent: #0a66f0;        /* єдиний яскравий синій */
+    --fg: #1b1d2a;            /* ~15:1 на білому, ~13:1 на пастелі */
+    --muted: #555b6e;         /* ~6.5:1 на білому, ~5.9:1 на фоні сторінки */
+    --link: #0857c9;          /* текстові посилання, ~5.6:1 на фоні сторінки */
+    --accent: #0a66f0;        /* єдиний яскравий синій, білий текст ~5:1 */
     --accent-fg: #ffffff;
     --ok: #13703a;
     --err: #a4191b;
@@ -32,35 +34,9 @@
     --tag-frame-bg: #dbe9ff; --tag-frame-fg: #174a94;
     --shadow: 0 10px 28px rgba(70, 60, 130, 0.14);
   }
-  /* ---- Tokens: dark (system preference, unless data-theme="light") ---- */
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --backdrop: #15161d;
-      --bg-a: #3a2a33;
-      --bg-b: #2c2740;
-      --bg-c: #223048;
-      --card: rgba(38, 40, 56, 0.82);
-      --card-solid: #262838;
-      --card-edge: rgba(255, 255, 255, 0.10);
-      --line: rgba(255, 255, 255, 0.12);
-      --fg: #f2f3f8;
-      --muted: #b9bfd0;
-      --accent: #2563eb;
-      --accent-fg: #ffffff;
-      --ok: #6ee7a0;
-      --err: #ff9a9a;
-      --err-bg: #5a2222;
-      --tile-blue: #1e3a66;   --tile-blue-fg: #cfe3ff;
-      --tile-green: #1f4a35;  --tile-green-fg: #c9f5da;
-      --tile-lav: #352b5e;    --tile-lav-fg: #e3dbff;
-      --tag-text-bg: #5a3a26; --tag-text-fg: #ffe0cc;
-      --tag-inst-bg: #3a2d62; --tag-inst-fg: #e3dbff;
-      --tag-comp-bg: #1f4a35; --tag-comp-fg: #c9f5da;
-      --tag-frame-bg: #1f3a63; --tag-frame-fg: #cfe3ff;
-      --shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
-    }
-  }
+  /* ---- Tokens: dark (opt-in, set by the toggle: data-theme="dark") ---- */
   :root[data-theme="dark"] {
+    color-scheme: dark;
     --backdrop: #15161d;
     --bg-a: #3a2a33;
     --bg-b: #2c2740;
@@ -71,6 +47,7 @@
     --line: rgba(255, 255, 255, 0.12);
     --fg: #f2f3f8;
     --muted: #b9bfd0;
+    --link: #8ab4ff;
     --accent: #2563eb;
     --accent-fg: #ffffff;
     --ok: #6ee7a0;
@@ -91,16 +68,27 @@
   body {
     margin: 0;
     min-height: 100vh;
-    padding: 32px 20px 48px;
-    background: var(--backdrop);
+    padding: 32px 16px 48px;
+    background:
+      radial-gradient(circle at 12% 0%, rgba(253, 227, 214, 0.9), transparent 45%),
+      radial-gradient(circle at 88% 100%, rgba(217, 235, 253, 0.9), transparent 50%),
+      var(--backdrop);
     color: var(--fg);
     font-family: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 12px;
     line-height: 1.4;
   }
-  header.page { max-width: 1240px; margin: 0 auto 24px; }
+  header.page {
+    max-width: 1240px; margin: 0 auto 24px;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+  }
   header.page h1 { margin: 0 0 4px; font-size: 20px; font-weight: 800; }
   header.page p { margin: 0; color: var(--muted); font-weight: 600; }
+  .theme-toggle {
+    flex: none; font: inherit; font-size: 12px; font-weight: 700;
+    color: var(--link); background: none; border: 0; padding: 4px 2px;
+    text-decoration: underline; text-underline-offset: 3px; cursor: pointer; white-space: nowrap;
+  }
 
   .gallery {
     max-width: 1240px;
@@ -115,7 +103,7 @@
   figcaption { font-size: 13px; font-weight: 800; }
   figcaption small { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--muted); }
 
-  /* ---- Plugin window: 380 px wide ---- */
+  /* ---- Plugin window: 380 px wide, fixed 520 px high ---- */
   .plugin {
     position: relative;
     width: 380px;
@@ -139,6 +127,7 @@
   }
   .plugin > * { position: relative; }
   .plugin.is-collapsed { height: 56px; }
+  .plugin.is-collapsed .tabs,
   .plugin.is-collapsed .content { display: none; }
   .plugin.is-bar {
     height: 56px;
@@ -168,15 +157,18 @@
     color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap;
   }
 
+  /* Scroll area under the fixed header and tabs */
   .content {
     flex: 1 1 auto; min-height: 0;
     display: flex; flex-direction: column; gap: 10px;
-    overflow-y: auto; padding-bottom: 4px;
+    overflow-y: auto; overscroll-behavior: contain;
+    padding: 2px 4px 16px;          /* простір для тіней карток у скролі */
     scrollbar-width: thin;
   }
   .panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .content > .panel { flex: none; }
 
-  /* Floating pill tab bar */
+  /* Floating pill tab bar (fixed, outside the scroll area) */
   .tabs {
     flex: none;
     display: flex; gap: 2px; padding: 3px;
@@ -299,8 +291,11 @@
 <body>
 
 <header class="page">
-  <h1>Мокап: плагін «Виділені ноди»</h1>
-  <p>Пастельний стиль референсу Meal Genius, вікно плагіна 380 px. Статичний макет: кнопки «Згорнути» і вкладки в кадрах 1 і 4 працюють.</p>
+  <div>
+    <h1>Мокап: плагін «Виділені ноди»</h1>
+    <p>Пастельний стиль референсу Meal Genius, вікно плагіна 380 px. Статичний макет: кнопки «Згорнути» і вкладки в кадрах 1 і 4 працюють.</p>
+  </div>
+  <button class="theme-toggle" type="button" id="theme-toggle" aria-pressed="false" title="Перемкнути світлу / темну тему">Темна / Світла</button>
 </header>
 
 <main class="gallery">
@@ -322,12 +317,12 @@
         </div>
       </header>
 
-      <div class="content">
-        <div class="tabs" role="tablist" aria-label="Розділи">
-          <button class="tab" type="button" role="tab" id="f1-tab-sel" aria-selected="true" aria-controls="f1-panel-sel" tabindex="0">Виділення</button>
-          <button class="tab" type="button" role="tab" id="f1-tab-rec" aria-selected="false" aria-controls="f1-panel-rec" tabindex="-1">Записи (2)</button>
-        </div>
+      <div class="tabs" role="tablist" aria-label="Розділи">
+        <button class="tab" type="button" role="tab" id="f1-tab-sel" aria-selected="true" aria-controls="f1-panel-sel" tabindex="0">Виділення</button>
+        <button class="tab" type="button" role="tab" id="f1-tab-rec" aria-selected="false" aria-controls="f1-panel-rec" tabindex="-1">Записи (2)</button>
+      </div>
 
+      <div class="content">
         <div class="panel" id="f1-panel-sel" role="tabpanel" aria-labelledby="f1-tab-sel">
           <ul class="list card" aria-label="Виділені ноди">
             <li class="node">
@@ -403,12 +398,12 @@
         </div>
       </header>
 
-      <div class="content">
-        <div class="tabs" role="tablist" aria-label="Розділи">
-          <button class="tab" type="button" role="tab" aria-selected="false" tabindex="-1">Виділення</button>
-          <button class="tab" type="button" role="tab" aria-selected="true" tabindex="0">Записи (2)</button>
-        </div>
+      <div class="tabs" role="tablist" aria-label="Розділи">
+        <button class="tab" type="button" role="tab" aria-selected="false" tabindex="-1">Виділення</button>
+        <button class="tab" type="button" role="tab" aria-selected="true" tabindex="0">Записи (2)</button>
+      </div>
 
+      <div class="content">
         <div class="panel" id="panel-rec-src" role="tabpanel" data-records-src>
           <div class="tiles">
             <div class="tile t-blue"><span class="lbl">Нові</span><span class="num">2</span><span class="sub">записи</span></div>
@@ -490,12 +485,12 @@
         </div>
       </header>
 
-      <div class="content">
-        <div class="tabs" role="tablist" aria-label="Розділи">
-          <button class="tab" type="button" role="tab" id="f4-tab-sel" aria-selected="true" aria-controls="f4-panel-sel" tabindex="0">Виділення</button>
-          <button class="tab" type="button" role="tab" id="f4-tab-rec" aria-selected="false" aria-controls="f4-panel-rec" tabindex="-1">Записи (2)</button>
-        </div>
+      <div class="tabs" role="tablist" aria-label="Розділи">
+        <button class="tab" type="button" role="tab" id="f4-tab-sel" aria-selected="true" aria-controls="f4-panel-sel" tabindex="0">Виділення</button>
+        <button class="tab" type="button" role="tab" id="f4-tab-rec" aria-selected="false" aria-controls="f4-panel-rec" tabindex="-1">Записи (2)</button>
+      </div>
 
+      <div class="content">
         <div class="panel" id="f4-panel-sel" role="tabpanel" aria-labelledby="f4-tab-sel">
           <ul class="list card" aria-label="Виділені ноди">
             <li class="node">
@@ -536,6 +531,17 @@
 <script>
 (function () {
   'use strict';
+
+  // Тема: світла за замовчуванням; перемикач ставить data-theme на <html> (:root).
+  var root = document.documentElement;
+  var themeBtn = document.getElementById('theme-toggle');
+  if (themeBtn) {
+    themeBtn.addEventListener('click', function () {
+      var dark = root.getAttribute('data-theme') !== 'dark';
+      root.setAttribute('data-theme', dark ? 'dark' : 'light');
+      themeBtn.setAttribute('aria-pressed', String(dark));
+    });
+  }
 
   // Вміст вкладки «Записи» береться з кадру 2 і підставляється в кадри 1 і 4.
   var source = document.querySelector('[data-records-src]');

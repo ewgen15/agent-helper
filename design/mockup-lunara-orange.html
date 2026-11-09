@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Мокап: Lunara, помаранчевий</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    /* Page and window surfaces (warm cream and peach) */
+    --page-bg: #FFD2C2;
+    --page-ink: #1E1B18;
+    --page-muted: #4A3F38;     /* 7.4:1 on --page-bg */
+    --surface: #FFF8EE;
+    --surface-2: #EFEBE1;
+    --card: #FFFFFF;
+    --line: #E6DCCD;
+    --line-strong: #D6C9B6;
+    /* Text */
+    --text: #1E1B18;
+    --muted: #6B625A;          /* 5.0:1 on --surface-2, 5.6:1 on --surface */
+    /* Accent: --accent is decorative only (dots, focus-free borders). Fills with text use --accent-strong. */
+    --accent: #F26B2E;
+    --accent-strong: #C2410C;  /* white text 5.2:1 */
+    --on-accent: #FFFFFF;
+    /* Status and type tags */
+    --tag-new-bg: #FDE2CF;   --tag-new-fg: #8A3210;
+    --tag-done-bg: #E9E4DA;  --tag-done-fg: #5A5148;
+    --tag-text-bg: #EFE9DF;  --tag-text-fg: #4A3F38;
+    --tag-inst-bg: #E7DDF8;  --tag-inst-fg: #4B2C8A;
+    --tag-comp-bg: #D8EFE3;  --tag-comp-fg: #1D5B3A;
+    /* Feedback */
+    --ok: #1F5A2A;
+    --err: #8E1B12;
+    --err-bg: #FBE1DC;
+    --shadow: 0 8px 24px rgba(120, 60, 30, 0.12);
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  :focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 32px 20px 48px;
+    background: var(--page-bg);
+    color: var(--page-ink);
+    font-family: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  header.page { max-width: 1240px; margin: 0 auto 24px; }
+  header.page h1 { margin: 0 0 4px; font-size: 20px; font-weight: 800; }
+  header.page p { margin: 0; color: var(--page-muted); font-weight: 600; }
+
+  .gallery {
+    max-width: 1240px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 32px;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  figure { margin: 0; width: 380px; max-width: 100%; display: flex; flex-direction: column; gap: 10px; }
+  figcaption { font-size: 13px; font-weight: 800; }
+  figcaption small { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--page-muted); }
+
+  /* ---- Plugin window: 380 px wide, fixed height, header and tabs stay put ---- */
+  .plugin {
+    position: relative;
+    width: 380px;
+    max-width: 100%;
+    height: 520px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: hidden;
+    border-radius: 24px;
+    background: var(--surface);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: var(--shadow);
+  }
+  .plugin.is-collapsed { height: 56px; padding: 10px 12px; border-radius: 18px; }
+  .plugin.is-collapsed .tabs,
+  .plugin.is-collapsed .content { display: none; }
+  .plugin.is-bar {
+    height: 56px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    border-radius: 18px;
+  }
+
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex: none; min-width: 0; }
+  .brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .logo {
+    flex: none;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--accent); color: #FFFFFF;
+    font-size: 12px; font-weight: 800;
+  }
+  .head h2 { margin: 0; font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .head-end { display: flex; align-items: center; gap: 6px; flex: none; }
+
+  .pill {
+    display: inline-flex; align-items: center;
+    height: 22px; padding: 0 8px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line);
+    color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap;
+  }
+
+  /* Segmented tabs: pill track, orange active segment */
+  .tabs {
+    flex: none;
+    display: flex; gap: 2px; padding: 3px;
+    background: var(--surface-2); border-radius: 999px;
+  }
+  .tab {
+    flex: 1 1 auto;
+    border: 0; background: transparent; cursor: pointer;
+    padding: 6px 10px; border-radius: 999px;
+    font: inherit; font-weight: 700; font-size: 12px; color: var(--muted);
+    white-space: nowrap;
+  }
+  .tab[aria-selected="true"] { background: var(--accent-strong); color: var(--on-accent); }
+
+  .content {
+    flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column; gap: 10px;
+    overflow-y: auto; padding: 0 4px 4px 0;
+    scrollbar-width: thin;
+  }
+  .panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+  .card { background: var(--card); border-radius: 14px; padding: 8px 10px; }
+
+  /* Selected nodes */
+  .nodes { list-style: none; margin: 0; padding: 4px 0; background: var(--card); border-radius: 14px; }
+  .node { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; }
+  .node + .node { border-top: 1px solid var(--line); }
+  .node-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; min-width: 0; }
+  .node-name { font-weight: 700; font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node-id { color: var(--muted); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tag { flex: none; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.03em; }
+  .t-text { background: var(--tag-text-bg); color: var(--tag-text-fg); }
+  .t-inst { background: var(--tag-inst-bg); color: var(--tag-inst-fg); }
+  .t-comp { background: var(--tag-comp-bg); color: var(--tag-comp-fg); }
+
+  /* Form controls */
+  .field { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .field > label { color: var(--muted); font-weight: 700; }
+  select, input[type="password"], textarea {
+    font: inherit; font-size: 12px; color: var(--text);
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 5px 8px;
+  }
+  select { min-width: 150px; }
+  input[type="password"] { width: 170px; }
+  textarea { width: 100%; resize: none; }
+  .check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
+  .check input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent-strong); }
+
+  .btn {
+    font: inherit; font-size: 12px; font-weight: 700;
+    height: 30px; padding: 0 14px; border-radius: 999px; border: 1px solid transparent;
+    cursor: pointer; white-space: nowrap;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn.primary { background: var(--accent-strong); color: var(--on-accent); }
+  .btn.secondary { background: var(--card); color: var(--text); border-color: var(--line-strong); }
+  .btn.sm { height: 24px; padding: 0 10px; font-size: 11px; }
+  .btn.wide { width: 100%; }
+
+  .send { display: flex; flex-direction: column; gap: 8px; }
+  .health { margin: 0; font-size: 12px; font-weight: 800; color: var(--ok); }
+  .count { color: var(--muted); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cbox { display: flex; flex-direction: column; gap: 6px; }
+  .cbox-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .cbox-head label { color: var(--muted); font-weight: 700; }
+  .cbox .btn { align-self: flex-end; }
+
+  .status { font-size: 12px; font-weight: 800; color: var(--ok); }
+  .err-box {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 10px; border-radius: 12px;
+    background: var(--err-bg); color: var(--err);
+    font-weight: 800; font-size: 12px;
+  }
+  .err-box::before { content: "●"; flex: none; }
+
+  /* Records tab */
+  .rec-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .summary { color: var(--muted); font-weight: 700; }
+  .cur {
+    display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline;
+    padding: 7px 10px; border-radius: 12px;
+    background: var(--card); border: 1px dashed var(--line-strong);
+    font-weight: 600;
+  }
+  .cur .lbl { color: var(--muted); font-style: italic; font-weight: 700; }
+  .recs { display: flex; flex-direction: column; gap: 8px; }
+  .rec { display: flex; flex-direction: column; gap: 6px; padding: 9px 10px; background: var(--card); border-radius: 14px; }
+  .rec.is-done { background: #F3EEE6; }
+  .rec-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0; }
+  .rec-title { font-size: 13px; font-weight: 800; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rec.is-done .rec-title { color: var(--muted); font-weight: 700; }
+  .rec-time { flex: none; color: var(--muted); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rec-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+  .rec-meta .btn { margin-left: auto; }
+  .badge { padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 800; }
+  .b-new { background: var(--tag-new-bg); color: var(--tag-new-fg); }
+  .b-done { background: var(--tag-done-bg); color: var(--tag-done-fg); }
+
+  /* Collapsed bar */
+  .bar-title { margin: 0; font-size: 14px; font-weight: 800; white-space: nowrap; }
+  .bar-end { display: flex; align-items: center; gap: 8px; }
+</style>
+</head>
+<body>
+
+<header class="page">
+  <h1>Мокап: плагін «Виділені ноди», стиль Lunara</h1>
+  <p>Помаранчевий варіант, світла тема, вікно плагіна 380 px. Вкладки в кадрах 1 і «Згорнути» в кадрі 1 працюють; інші кадри статичні.</p>
+</header>
+
+<main class="gallery">
+
+  <!-- 1. Виділення, розгорнуто (інтерактивний) -->
+  <figure>
+    <figcaption>1 · Вкладка «Виділення», розгорнуто
+      <small>380×520 · шапка й вкладки закріплені, вміст прокручується</small>
+    </figcaption>
+    <section class="plugin" data-frame aria-label="Плагін: вкладка Виділення">
+      <header class="head">
+        <div class="brand">
+          <span class="logo" aria-hidden="true">✦</span>
+          <h2>Виділені ноди</h2>
+        </div>
+        <div class="head-end">
+          <span class="pill">Вибрано: 3</span>
+          <button class="btn secondary sm collapse" type="button" aria-expanded="true">▾ Згорнути</button>
+        </div>
+      </header>
+
+      <div class="tabs" role="tablist" aria-label="Розділи">
+        <button class="tab" type="button" role="tab" id="f1-tab-sel" aria-selected="true" aria-controls="f1-sel" tabindex="0">Виділення</button>
+        <button class="tab" type="button" role="tab" id="f1-tab-rec" aria-selected="false" aria-controls="f1-rec" tabindex="-1">Записи (2)</button>
+      </div>
+
+      <div class="content">
+        <div class="panel" id="f1-sel" role="tabpanel" aria-labelledby="f1-tab-sel">
+          <ul class="nodes" aria-label="Виділені ноди">
+            <li class="node">
+              <div class="node-top"><span class="node-name">Hero / Title</span><span class="tag t-text">TEXT</span></div>
+              <span class="node-id">12:48</span>
+            </li>
+            <li class="node">
+              <div class="node-top"><span class="node-name">Button / Primary</span><span class="tag t-inst">INSTANCE</span></div>
+              <span class="node-id">12:57</span>
+            </li>
+            <li class="node">
+              <div class="node-top"><span class="node-name">Card / Avocado</span><span class="tag t-comp">COMPONENT</span></div>
+              <span class="node-id">14:103</span>
+            </li>
+          </ul>
+
+          <div class="field">
+            <label for="f1-fmt">Формат</label>
+            <select id="f1-fmt">
+              <option selected>id</option>
+              <option>id + name</option>
+              <option>link</option>
+              <option>Claude text</option>
+            </select>
+          </div>
+
+          <label class="check"><input type="checkbox"> Автокопіювання при виборі</label>
+
+          <button class="btn primary wide" type="button">Копіювати</button>
+          <p class="status" role="status">Скопійовано</p>
+
+          <div class="card send">
+            <label class="check"><input type="checkbox" checked> Відправити в Claude</label>
+            <div class="field">
+              <label for="f1-tok">Токен</label>
+              <input type="password" id="f1-tok" value="figma-token-2026" autocomplete="off" spellcheck="false">
+            </div>
+            <p class="health" role="status">● Сервер працює</p>
+            <label class="check"><input type="checkbox"> Розгортати інстанси</label>
+            <button class="btn primary wide" type="button">Додати деталі</button>
+            <button class="btn secondary wide" type="button" aria-expanded="true" aria-controls="f1-cbox">Додати деталі з коментарем</button>
+            <div class="cbox" id="f1-cbox">
+              <div class="cbox-head">
+                <label for="f1-cm">Коментар для Claude</label>
+                <span class="count">42/2000</span>
+              </div>
+              <textarea id="f1-cm" rows="2" maxlength="2000">Перевір відступи в картці: вони різні у двох рядах.</textarea>
+              <button class="btn primary sm" type="button">Відправити</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="f1-rec" role="tabpanel" aria-labelledby="f1-tab-rec" hidden>
+          <div class="rec-head">
+            <span class="summary">2 нових з 3</span>
+            <button class="btn secondary sm" type="button">Оновити</button>
+          </div>
+          <div class="cur"><span class="lbl">Поточне:</span><span>10:44:02 · a1b2c3… · 3 вузли · Card / Avocado</span></div>
+          <div class="recs">
+            <article class="rec">
+              <div class="rec-top"><span class="rec-title">Card / Avocado</span><span class="rec-time">10:42:17</span></div>
+              <div class="rec-meta">
+                <span class="badge b-new">нове</span>
+                <span>a1b2c3… · 3 вузли</span>
+                <button class="btn primary sm" type="button">Позначити виконаним</button>
+              </div>
+            </article>
+            <article class="rec">
+              <div class="rec-top"><span class="rec-title">Button / Primary</span><span class="rec-time">10:31:05</span></div>
+              <div class="rec-meta">
+                <span class="badge b-new">нове</span>
+                <span>a1b2c3… · 2 вузли</span>
+                <button class="btn primary sm" type="button">Позначити виконаним</button>
+              </div>
+            </article>
+            <article class="rec is-done">
+              <div class="rec-top"><span class="rec-title">Hero section</span><span class="rec-time">09:58:44</span></div>
+              <div class="rec-meta">
+                <span class="badge b-done">виконано</span>
+                <span>d4e5f6… · 5 вузлів</span>
+                <button class="btn secondary sm" type="button">Повернути в нові</button>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+  </figure>
+
+  <!-- 2. Записи (статичний) -->
+  <figure>
+    <figcaption>2 · Вкладка «Записи»
+      <small>380×520 · поточне, три записи, один виконаний</small>
+    </figcaption>
+    <section class="plugin" data-frame data-static aria-label="Плагін: вкладка Записи">
+      <header class="head">
+        <div class="brand">
+          <span class="logo" aria-hidden="true">✦</span>
+          <h2>Виділені ноди</h2>
+        </div>
+        <div class="head-end">
+          <span class="pill">Вибрано: 3</span>
+          <button class="btn secondary sm" type="button" aria-expanded="true">▾ Згорнути</button>
+        </div>
+      </header>
+
+      <div class="tabs" role="tablist" aria-label="Розділи">
+        <button class="tab" type="button" role="tab" aria-selected="false" tabindex="-1">Виділення</button>
+        <button class="tab" type="button" role="tab" aria-selected="true" tabindex="0">Записи (2)</button>
+      </div>
+
+      <div class="content">
+        <div class="panel" role="tabpanel">
+          <div class="rec-head">
+            <span class="summary">2 нових з 3</span>
+            <button class="btn secondary sm" type="button">Оновити</button>
+          </div>
+          <div class="cur"><span class="lbl">Поточне:</span><span>10:44:02 · a1b2c3… · 3 вузли · Card / Avocado</span></div>
+          <div class="recs">
+            <article class="rec">
+              <div class="rec-top"><span class="rec-title">Card / Avocado</span><span class="rec-time">10:42:17</span></div>
+              <div class="rec-meta">
+                <span class="badge b-new">нове</span>
+                <span>a1b2c3… · 3 вузли</span>
+                <button class="btn primary sm" type="button">Позначити виконаним</button>
+              </div>
+            </article>
+            <article class="rec">
+              <div class="rec-top"><span class="rec-title">Button / Primary</span><span class="rec-time">10:31:05</span></div>
+              <div class="rec-meta">
+                <span class="badge b-new">нове</span>
+                <span>a1b2c3… · 2 вузли</span>
+                <button class="btn primary sm" type="button">Позначити виконаним</button>
+              </div>
+            </article>
+            <article class="rec is-done">
+              <div class="rec-top"><span class="rec-title">Hero section</span><span class="rec-time">09:58:44</span></div>
+              <div class="rec-meta">
+                <span class="badge b-done">виконано</span>
+                <span>d4e5f6… · 5 вузлів</span>
+                <button class="btn secondary sm" type="button">Повернути в нові</button>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+  </figure>
+
+  <!-- 3. Згорнуто (статичний, 380×56) -->
+  <figure>
+    <figcaption>3 · Згорнуто
+      <small>380×56 · «▸ Розгорнути»</small>
+    </figcaption>
+    <section class="plugin is-bar" aria-label="Плагін згорнуто">
+      <h2 class="bar-title">Виділені ноди</h2>
+      <div class="bar-end">
+        <span class="pill">3 вузли</span>
+        <button class="btn secondary sm" type="button" aria-expanded="false">▸ Розгорнути</button>
+      </div>
+    </section>
+  </figure>
+
+  <!-- 4. Помилка збереження деталей (статичний) -->
+  <figure>
+    <figcaption>4 · Помилка збереження деталей
+      <small>380×520 · стан помилки під кнопками деталей</small>
+    </figcaption>
+    <section class="plugin" data-frame data-static aria-label="Плагін: помилка збереження деталей">
+      <header class="head">
+        <div class="brand">
+          <span class="logo" aria-hidden="true">✦</span>
+          <h2>Виділені ноди</h2>
+        </div>
+        <div class="head-end">
+          <span class="pill">Вибрано: 3</span>
+          <button class="btn secondary sm" type="button" aria-expanded="true">▾ Згорнути</button>
+        </div>
+      </header>
+
+      <div class="tabs" role="tablist" aria-label="Розділи">
+        <button class="tab" type="button" role="tab" aria-selected="true" tabindex="0">Виділення</button>
+        <button class="tab" type="button" role="tab" aria-selected="false" tabindex="-1">Записи (2)</button>
+      </div>
+
+      <div class="content">
+        <div class="panel" role="tabpanel">
+          <ul class="nodes" aria-label="Виділені ноди">
+            <li class="node">
+              <div class="node-top"><span class="node-name">Hero / Title</span><span class="tag t-text">TEXT</span></div>
+              <span class="node-id">12:48</span>
+            </li>
+            <li class="node">
+              <div class="node-top"><span class="node-name">Button / Primary</span><span class="tag t-inst">INSTANCE</span></div>
+              <span class="node-id">12:57</span>
+            </li>
+            <li class="node">
+              <div class="node-top"><span class="node-name">Card / Avocado</span><span class="tag t-comp">COMPONENT</span></div>
+              <span class="node-id">14:103</span>
+            </li>
+          </ul>
+
+          <div class="card send">
+            <label class="check"><input type="checkbox" checked> Відправити в Claude</label>
+            <div class="field">
+              <label for="f4-tok">Токен</label>
+              <input type="password" id="f4-tok" value="figma-token-2026" autocomplete="off" spellcheck="false">
+            </div>
+            <p class="health" role="status">● Сервер працює</p>
+            <label class="check"><input type="checkbox"> Розгортати інстанси</label>
+            <button class="btn primary wide" type="button">Додати деталі</button>
+            <button class="btn secondary wide" type="button" aria-expanded="false">Додати деталі з коментарем</button>
+            <div class="err-box" role="status">Деталі не збережено: detail must have at most 400 records</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </figure>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // Tab switching (interactive frames only; static frames have data-static).
+  document.querySelectorAll('[data-frame]').forEach(function (frame) {
+    if (frame.hasAttribute('data-static')) return;
+
+    frame.querySelectorAll('[role="tab"]').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        frame.querySelectorAll('[role="tab"]').forEach(function (t) {
+          var on = t === tab;
+          t.setAttribute('aria-selected', String(on));
+          t.tabIndex = on ? 0 : -1;
+        });
+        var target = tab.getAttribute('aria-controls');
+        frame.querySelectorAll('[role="tabpanel"]').forEach(function (p) {
+          p.hidden = p.id !== target;
+        });
+      });
+    });
+
+    // Collapse toggle: hides tabs and content, leaves the header row.
+    var collapse = frame.querySelector('.collapse');
+    if (collapse) {
+      collapse.addEventListener('click', function () {
+        var collapsed = frame.classList.toggle('is-collapsed');
+        collapse.textContent = collapsed ? '▸ Розгорнути' : '▾ Згорнути';
+        collapse.setAttribute('aria-expanded', String(!collapsed));
+      });
+    }
+  });
+})();
+</script>
+</body>
+</html>
