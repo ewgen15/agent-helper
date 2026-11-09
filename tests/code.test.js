@@ -91,15 +91,37 @@ test('code.js shows the UI and posts the default settings and the initial select
   assert.equal(ctx.shown[0].html, '<html>stub</html>');
   assert.deepEqual(plain(ctx.shown[0].options), { width: 380, height: 520 });
   assert.deepEqual(plain(ctx.posted), [
-    { type: 'settings', settings: { send: false, token: '' } },
+    { type: 'settings', settings: { send: false, token: '', format: 'id' } },
     { type: 'selection', fileKey: null, nodes: [] },
   ]);
 });
 
 test('code.js posts stored settings to the UI before the selection', async () => {
-  const ctx = await loadCode({ stored: { send: true, token: 'tok' } });
-  assert.deepEqual(plain(ctx.posted[0]), { type: 'settings', settings: { send: true, token: 'tok' } });
+  const ctx = await loadCode({ stored: { send: true, token: 'tok', format: 'link' } });
+  assert.deepEqual(plain(ctx.posted[0]), { type: 'settings', settings: { send: true, token: 'tok', format: 'link' } });
   assert.equal(ctx.posted[1].type, 'selection');
+});
+
+test('code.js loads older stored settings without format and uses the default format', async () => {
+  const ctx = await loadCode({ stored: { send: true, token: 'old' } });
+  assert.deepEqual(plain(settingsMessages(ctx)[0]), { type: 'settings', settings: { send: true, token: 'old', format: 'id' } });
+  assert.equal(selectionMessages(ctx).length, 1);
+});
+
+test('code.js restores every valid stored format and replaces an unknown one with the default', async () => {
+  for (const format of ['id', 'idname', 'link', 'claude']) {
+    const ctx = await loadCode({ stored: { send: false, token: '', format } });
+    assert.equal(settingsMessages(ctx)[0].settings.format, format);
+  }
+  const bad = await loadCode({ stored: { send: true, token: 'x', format: 'csv' } });
+  assert.deepEqual(plain(settingsMessages(bad)[0]), { type: 'settings', settings: { send: true, token: 'x', format: 'id' } });
+});
+
+test('code.ts: the copy formats are the same list as the select in ui.html', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'ui.html'), 'utf8');
+  const listed = fs.readFileSync(path.join(ROOT, 'code.ts'), 'utf8').match(/const COPY_FORMATS: readonly CopyFormat\[\] = \[([^\]]*)\]/)[1];
+  const optionValues = [...html.matchAll(/<option value="([^"]+)">/g)].map((m) => m[1]);
+  assert.deepEqual(listed.match(/'[^']+'/g).map((s) => s.slice(1, -1)), optionValues);
 });
 
 test('code.js falls back to defaults when stored settings are malformed', async () => {
@@ -114,14 +136,14 @@ test('code.js falls back to defaults when stored settings are malformed', async 
     const ctx = await loadCode({ stored });
     assert.deepEqual(plain(settingsMessages(ctx)[0]), {
       type: 'settings',
-      settings: { send: false, token: '' },
+      settings: { send: false, token: '', format: 'id' },
     }, `stored=${JSON.stringify(stored)}`);
   }
 });
 
 test('code.js falls back to defaults when clientStorage.getAsync rejects', async () => {
   const ctx = await loadCode({ storageMode: 'read-fails' });
-  assert.deepEqual(plain(settingsMessages(ctx)[0]), { type: 'settings', settings: { send: false, token: '' } });
+  assert.deepEqual(plain(settingsMessages(ctx)[0]), { type: 'settings', settings: { send: false, token: '', format: 'id' } });
   assert.equal(selectionMessages(ctx).length, 1);
 });
 
@@ -223,21 +245,34 @@ test('code.js: resize with a non-boolean or missing collapsed is ignored and doe
   assert.deepEqual(ctx.resized, []);
 });
 
-test('code.js: save-settings stores {send, token} under the "settings" key', async () => {
+test('code.js: save-settings stores {send, token, format} under the "settings" key', async () => {
   const ctx = await loadCode();
-  ctx.figma.ui.onmessage({ type: 'save-settings', settings: { send: true, token: 'abc' } });
+  ctx.figma.ui.onmessage({ type: 'save-settings', settings: { send: true, token: 'abc', format: 'link' } });
   await flush();
-  assert.deepEqual(plain(ctx.writes), [{ key: 'settings', value: { send: true, token: 'abc' } }]);
-  assert.deepEqual(plain(ctx.storage.get('settings')), { send: true, token: 'abc' });
+  assert.deepEqual(plain(ctx.writes), [{ key: 'settings', value: { send: true, token: 'abc', format: 'link' } }]);
+  assert.deepEqual(plain(ctx.storage.get('settings')), { send: true, token: 'abc', format: 'link' });
   assert.deepEqual(ctx.notified, []);
+});
+
+test('code.js: an unknown, missing or non-string format is saved as the default "id", the rest is kept', async () => {
+  const ctx = await loadCode();
+  ctx.figma.ui.onmessage({ type: 'save-settings', settings: { send: true, token: 'abc', format: 'csv' } });
+  ctx.figma.ui.onmessage({ type: 'save-settings', settings: { send: true, token: 'abc' } });
+  ctx.figma.ui.onmessage({ type: 'save-settings', settings: { send: false, token: '', format: 5 } });
+  await flush();
+  assert.deepEqual(plain(ctx.writes.map((w) => w.value)), [
+    { send: true, token: 'abc', format: 'id' },
+    { send: true, token: 'abc', format: 'id' },
+    { send: false, token: '', format: 'id' },
+  ]);
 });
 
 test('code.js: saved settings are loaded again on the next start', async () => {
   const first = await loadCode();
-  first.figma.ui.onmessage({ type: 'save-settings', settings: { send: true, token: 'persist-me' } });
+  first.figma.ui.onmessage({ type: 'save-settings', settings: { send: true, token: 'persist-me', format: 'claude' } });
   await flush();
   const second = await loadCode({ stored: first.storage.get('settings') });
-  assert.deepEqual(plain(settingsMessages(second)[0].settings), { send: true, token: 'persist-me' });
+  assert.deepEqual(plain(settingsMessages(second)[0].settings), { send: true, token: 'persist-me', format: 'claude' });
 });
 
 test('code.js: save-settings with extra keys or wrong types is ignored', async () => {

@@ -66,8 +66,8 @@ function makeElement(tag) {
 function loadUi({ clipboard, execCommand, fetchImpl } = {}) {
   const elements = {};
   for (const id of ['count', 'list', 'format', 'auto', 'copy', 'status', 'send', 'token', 'health', 'sendStatus',
-    'detailBtn', 'commentToggle', 'commentBox', 'comment', 'commentCount', 'commentSend', 'expandInstances',
-    'tablist', 'tabSelection', 'tabRecords', 'recordsTabLabel', 'panelSelection', 'panelRecords',
+    'detailBtn', 'comment', 'commentCount', 'expandInstances', 'healthDot',
+    'tablist', 'tabSelection', 'tabRecords', 'tabSettings', 'recordsTabLabel', 'panelSelection', 'panelRecords', 'panelSettings',
     'countWrap', 'summary', 'collapseBtn', 'recordsRefresh', 'recordsHint', 'recordsStatus', 'recordsCurrent', 'recordsList', 'recordsSummary']) {
     elements[id] = makeElement(id);
   }
@@ -346,7 +346,7 @@ test('ui.html saves the checkbox state to the plugin when toggled', () => {
   ui.elements.send.checked = true;
   ui.elements.send.dispatch('change', {});
   assert.deepEqual(plain(ui.posted[0]), {
-    msg: { pluginMessage: { type: 'save-settings', settings: { send: true, token: 'secret' } } },
+    msg: { pluginMessage: { type: 'save-settings', settings: { send: true, token: 'secret', format: 'id' } } },
     target: '*',
   });
 });
@@ -357,7 +357,7 @@ test('ui.html saves the token to the plugin on each input', () => {
   ui.elements.token.value = 'abc';
   ui.elements.token.dispatch('input', {});
   assert.deepEqual(plain(ui.posted[ui.posted.length - 1].msg), {
-    pluginMessage: { type: 'save-settings', settings: { send: false, token: 'abc' } },
+    pluginMessage: { type: 'save-settings', settings: { send: false, token: 'abc', format: 'id' } },
   });
 });
 
@@ -696,8 +696,8 @@ function pendingDetailTimer(ui) {
 
 test('ui.html detail buttons are enabled only with sending on, a token and a non-empty selection', () => {
   const ui = loadUi();
-  const { detailBtn, commentToggle, commentSend } = ui.elements;
-  const enabled = () => !detailBtn.disabled && !commentToggle.disabled && !commentSend.disabled;
+  const { detailBtn } = ui.elements;
+  const enabled = () => !detailBtn.disabled;
 
   ui.sendSelection('FK1', NODES);
   assert.equal(enabled(), false, 'sending is off');
@@ -720,7 +720,7 @@ test('ui.html detail buttons are enabled only with sending on, a token and a non
   assert.equal(enabled(), false, 'empty selection');
 });
 
-test('ui.html "Додати деталі" posts request-detail with an incrementing requestId', async () => {
+test('ui.html "Відправити деталі" posts request-detail with an incrementing requestId', async () => {
   const ui = loadSendingUi();
   ui.sendSelection('FK1', NODES);
   await flush();
@@ -742,19 +742,15 @@ test('ui.html disables the detail buttons while a request is in flight', async (
   const ui = loadSendingUi();
   ui.sendSelection('FK1', NODES);
   await flush();
-  const { detailBtn, commentToggle, commentSend } = ui.elements;
+  const { detailBtn } = ui.elements;
 
   detailBtn.dispatch('click', {});
   assert.equal(detailBtn.disabled, true);
-  assert.equal(commentToggle.disabled, true);
-  assert.equal(commentSend.disabled, true);
 
   reply(ui, 1, SAME_IDS); // the POST is in flight now
   assert.equal(detailBtn.disabled, true);
   await flush();
   assert.equal(detailBtn.disabled, false);
-  assert.equal(commentToggle.disabled, false);
-  assert.equal(commentSend.disabled, false);
 });
 
 test('ui.html sends no request-detail while sending is off, the token is blank or nothing is selected', async () => {
@@ -799,22 +795,16 @@ test('ui.html matching detail reply POSTs the selection with detail and no note'
   assert.equal(ui.elements.detailBtn.disabled, false);
 });
 
-test('ui.html comment flow reveals the textarea, then POSTs detail with the trimmed note', async () => {
+test('ui.html single detail button posts request-detail and sends the comment as the trimmed note', async () => {
   const ui = loadSendingUi();
   ui.sendSelection('FK1', NODES);
   await flush();
-  const { commentToggle, commentBox, comment, commentCount, commentSend } = ui.elements;
-
-  assert.equal(commentBox.hidden, true);
-  assert.equal(commentToggle.getAttribute('aria-expanded'), 'false');
-  commentToggle.dispatch('click', {});
-  assert.equal(commentBox.hidden, false);
-  assert.equal(commentToggle.getAttribute('aria-expanded'), 'true');
+  const { comment, commentCount, detailBtn } = ui.elements;
 
   typeComment(ui, '  Перевір відступи  ');
   assert.equal(commentCount.textContent, '20/2000');
 
-  commentSend.dispatch('click', {});
+  detailBtn.dispatch('click', {});
   assert.deepEqual(detailRequests(ui), [1]);
   reply(ui, 1, SAME_IDS);
   await flush();
@@ -827,8 +817,6 @@ test('ui.html comment flow reveals the textarea, then POSTs detail with the trim
     note: 'Перевір відступи',
   });
   assert.equal(comment.value, '', 'the comment is cleared once it is sent');
-  assert.equal(commentBox.hidden, true);
-  assert.equal(commentToggle.getAttribute('aria-expanded'), 'false');
 });
 
 test('ui.html stale detail replies are ignored: old requestId, mismatched ids, stale errors', async () => {
@@ -914,29 +902,24 @@ test('ui.html gives up after 5 seconds with "Таймаут збору дета�
 test('ui.html clears the comment when the selected ids change, but keeps it for the same ids', () => {
   const ui = loadSendingUi();
   ui.sendSelection('FK1', NODES);
-  const { commentToggle, commentBox, comment, commentCount } = ui.elements;
-  commentToggle.dispatch('click', {});
+  const { comment, commentCount } = ui.elements;
   typeComment(ui, 'Тримати');
 
   ui.sendSelection('FK1', NODES.slice().reverse().map((n) => ({ ...n })));
   assert.equal(comment.value, 'Тримати');
-  assert.equal(commentBox.hidden, false);
 
   ui.sendSelection('FK1', [NODES[0]]);
   assert.equal(comment.value, '');
   assert.equal(commentCount.textContent, '0/2000');
-  assert.equal(commentBox.hidden, true);
-  assert.equal(commentToggle.getAttribute('aria-expanded'), 'false');
 });
 
-test('ui.html omits note when the comment is blank', async () => {
+test('ui.html empty comment sends the detail with no note', async () => {
   const ui = loadSendingUi();
   ui.sendSelection('FK1', NODES);
   await flush();
 
-  ui.elements.commentToggle.dispatch('click', {});
   typeComment(ui, '  \n ');
-  ui.elements.commentSend.dispatch('click', {});
+  ui.elements.detailBtn.dispatch('click', {});
   reply(ui, 1, SAME_IDS);
   await flush();
 
@@ -950,12 +933,11 @@ test('ui.html caps the comment at 2000 characters and sends the capped note', as
   ui.sendSelection('FK1', NODES);
   await flush();
 
-  ui.elements.commentToggle.dispatch('click', {});
   typeComment(ui, 'я'.repeat(2500));
   assert.equal(ui.elements.comment.value.length, 2000);
   assert.equal(ui.elements.commentCount.textContent, '2000/2000');
 
-  ui.elements.commentSend.dispatch('click', {});
+  ui.elements.detailBtn.dispatch('click', {});
   reply(ui, 1, SAME_IDS);
   await flush();
   const calls = postCalls(ui);
@@ -968,7 +950,6 @@ test('ui.html typing a comment sends nothing by itself (no debounced re-POST)', 
   await flush();
   const before = ui.fetchCalls.length;
 
-  ui.elements.commentToggle.dispatch('click', {});
   typeComment(ui, 'Нотатка');
   typeComment(ui, 'Нотатка ще');
   await flush();
@@ -992,9 +973,8 @@ test('ui.html 401 on the detail POST marks the token as wrong and keeps the comm
   ui.sendSelection('FK1', NODES);
   await flush(); // the basic selection POST succeeds
 
-  ui.elements.commentToggle.dispatch('click', {});
   typeComment(ui, 'Зауваження');
-  ui.elements.commentSend.dispatch('click', {});
+  ui.elements.detailBtn.dispatch('click', {});
   reply(ui, 1, SAME_IDS);
   await flush();
 
@@ -1006,7 +986,6 @@ test('ui.html 401 on the detail POST marks the token as wrong and keeps the comm
     hidden: false,
   });
   assert.equal(ui.elements.comment.value, 'Зауваження', 'the comment is kept for a retry');
-  assert.equal(ui.elements.commentBox.hidden, false);
   assert.equal(ui.elements.detailBtn.disabled, false);
 });
 
@@ -1123,14 +1102,13 @@ test('ui.html request-detail carries expandInstances true after the checkbox is 
   assert.equal(lastDetailRequest(ui).expandInstances, false, 'unchecking applies to the next request');
 });
 
-test('ui.html applies expandInstances to the comment flow too', async () => {
+test('ui.html applies expandInstances to a detail request that carries a comment', async () => {
   const ui = loadSendingUi();
   ui.sendSelection('FK1', NODES);
   await flush();
   ui.elements.expandInstances.checked = true;
-  ui.elements.commentToggle.dispatch('click', {});
   typeComment(ui, 'Перевір інстанси');
-  ui.elements.commentSend.dispatch('click', {});
+  ui.elements.detailBtn.dispatch('click', {});
   assert.deepEqual(plain(lastDetailRequest(ui)), {
     type: 'request-detail',
     requestId: 1,
@@ -1175,14 +1153,12 @@ test('ui.html expandInstances checkbox is disabled while a request is in flight 
   assert.equal(expandInstances.disabled, false, 're-enabled once the request settles');
 });
 
-test('ui.html detail markup: toggle aria wiring, labelled textarea, maxlength 2000, no old note UI', () => {
-  assert.match(HTML, /<button id="commentToggle"[^>]*aria-expanded="false"[^>]*aria-controls="commentBox"/);
+test('ui.html detail markup: one primary button, an always visible labelled textarea, maxlength 2000', () => {
+  assert.match(HTML, /<button id="detailBtn" class="primary" type="button" disabled>Відправити деталі<\/button>/);
+  assert.match(HTML, /<div class="comment-box">\s*<div class="comment-head">/, 'the comment box has no hidden attribute');
   assert.match(HTML, /<label for="comment">/);
   assert.match(HTML, /<textarea id="comment"[^>]*maxlength="2000"[^>]*placeholder="Коментар для Claude…"/);
-  assert.match(HTML, /id="detailBtn"[^>]*>Додати деталі</);
-  assert.match(HTML, /id="commentToggle"[^>]*>Додати деталі з коментарем</);
-  assert.match(HTML, /id="commentSend"[^>]*>Відправити</);
-  assert.doesNotMatch(HTML, /noteToggle|Написати нотатку/);
+  assert.doesNotMatch(HTML, /commentToggle|commentSend|commentBox|Додати деталі|noteToggle|Написати нотатку/);
 });
 
 test('ui.html never persists the comment to the plugin', async () => {
@@ -1190,9 +1166,8 @@ test('ui.html never persists the comment to the plugin', async () => {
   ui.sendSelection('FK1', NODES);
   await flush();
 
-  ui.elements.commentToggle.dispatch('click', {});
   typeComment(ui, 'секретна нотатка');
-  ui.elements.commentSend.dispatch('click', {});
+  ui.elements.detailBtn.dispatch('click', {});
   reply(ui, 1, SAME_IDS);
   await flush();
 
@@ -1811,45 +1786,61 @@ test('ui.html records gives up after 2 seconds with "Сервер не запу�
 
 // ---- Tabs: "Виділення" and "Записи (N)" ----
 
-test('ui.html tabs markup: tablist, two tabs with aria wiring, matching tabpanels', () => {
+test('ui.html tabs markup: tablist with three tabs, each with aria wiring and a matching tabpanel', () => {
   assert.match(HTML, /<div id="tablist" class="tabs" role="tablist"/);
   assert.match(HTML, /<button id="tabSelection" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panelSelection" tabindex="0">Виділення<\/button>/);
   assert.match(HTML, /<button id="tabRecords" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panelRecords" tabindex="-1">/);
+  assert.match(HTML, /<button id="tabSettings" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panelSettings" tabindex="-1">Налаштування<\/button>/);
   assert.match(HTML, /<div id="panelSelection" class="panel" role="tabpanel" aria-labelledby="tabSelection">/);
   assert.match(HTML, /<div id="panelRecords" class="panel" role="tabpanel" aria-labelledby="tabRecords" hidden>/);
-  // The send settings and the detail buttons stay in the selection panel, the records section after it.
+  assert.match(HTML, /<div id="panelSettings" class="panel" role="tabpanel" aria-labelledby="tabSettings" hidden>/);
+});
+
+test('ui.html settings controls live in the settings panel; the selection panel keeps only selection tools', () => {
   const selAt = HTML.indexOf('id="panelSelection"');
   const recAt = HTML.indexOf('id="panelRecords"');
-  for (const id of ['list', 'format', 'copy', 'token', 'detailBtn']) {
-    const at = HTML.indexOf(`id="${id}"`);
-    assert.ok(at > selAt && at < recAt, `${id} is in the selection panel`);
+  const setAt = HTML.indexOf('id="panelSettings"');
+  const at = (id) => HTML.indexOf(`id="${id}"`);
+  for (const id of ['list', 'copy', 'auto', 'expandInstances', 'comment', 'detailBtn', 'sendStatus']) {
+    assert.ok(at(id) > selAt && at(id) < recAt, `${id} is in the selection panel`);
+  }
+  for (const id of ['send', 'format', 'token', 'health']) {
+    assert.ok(at(id) > setAt, `${id} is in the settings panel`);
+    assert.ok(!(at(id) > selAt && at(id) < recAt), `${id} is not in the selection panel`);
   }
 });
 
-test('ui.html tabs: click, arrow keys, Home and End switch the panel and aria-selected', () => {
+test('ui.html tabs: click, arrow keys (wrapping), Home and End switch the panel and aria-selected', () => {
   const ui = loadUi();
-  const { tabSelection, tabRecords, panelSelection, panelRecords, tablist } = ui.elements;
+  const { tabSelection, tabRecords, tabSettings, panelSelection, panelRecords, panelSettings, tablist } = ui.elements;
   const key = (k) => tablist.dispatch('keydown', { key: k, preventDefault() {} });
+  const selected = () => [tabSelection, tabRecords, tabSettings].map((t) => t.getAttribute('aria-selected'));
 
   tabRecords.dispatch('click', {});
-  assert.equal(tabRecords.getAttribute('aria-selected'), 'true');
-  assert.equal(tabSelection.getAttribute('aria-selected'), 'false');
+  assert.deepEqual(selected(), ['false', 'true', 'false']);
   assert.equal(tabRecords.tabIndex, 0, 'the selected tab is in the tab order');
   assert.equal(tabSelection.tabIndex, -1);
   assert.equal(panelRecords.hidden, false);
   assert.equal(panelSelection.hidden, true);
+  assert.equal(panelSettings.hidden, true);
 
-  key('ArrowLeft');
-  assert.equal(tabSelection.getAttribute('aria-selected'), 'true');
-  assert.equal(panelSelection.hidden, false);
   key('ArrowRight');
-  assert.equal(tabRecords.getAttribute('aria-selected'), 'true');
+  assert.deepEqual(selected(), ['false', 'false', 'true']);
+  assert.equal(panelSettings.hidden, false);
+  key('ArrowRight');
+  assert.deepEqual(selected(), ['true', 'false', 'false'], 'ArrowRight wraps to the first tab');
+  assert.equal(panelSelection.hidden, false);
+  key('ArrowLeft');
+  assert.deepEqual(selected(), ['false', 'false', 'true'], 'ArrowLeft wraps to the last tab');
+  key('ArrowLeft');
+  assert.deepEqual(selected(), ['false', 'true', 'false']);
   key('Home');
-  assert.equal(tabSelection.getAttribute('aria-selected'), 'true');
+  assert.deepEqual(selected(), ['true', 'false', 'false']);
   key('End');
-  assert.equal(tabRecords.getAttribute('aria-selected'), 'true');
+  assert.deepEqual(selected(), ['false', 'false', 'true']);
+  assert.equal(tabSettings.tabIndex, 0);
   key('a');
-  assert.equal(tabRecords.getAttribute('aria-selected'), 'true', 'other keys change nothing');
+  assert.deepEqual(selected(), ['false', 'false', 'true'], 'other keys change nothing');
 });
 
 test('ui.html tab label: "Записи" until the count is known, then "Записи (N)" on both tabs', async () => {
@@ -1976,4 +1967,93 @@ test('ui.html header has an inline decorative SVG logo next to the title', () =>
 
 test('ui.html no longer uses the ✦ glyph anywhere', () => {
   assert.doesNotMatch(HTML, /✦/);
+});
+
+// ---- Settings tab (copy format, token, send switch) and the header status dot ----
+
+test('ui.html header dot is a button next to the title, inside the header row', () => {
+  const header = HTML.match(/<div class="head">[\s\S]*?<div class="head-end">/);
+  assert.ok(header, 'header row found');
+  assert.match(header[0], /<\/h1>\s*<button id="healthDot" class="health-dot off" type="button"/);
+});
+
+test('ui.html header dot mirrors the server state, with a text label in aria-label and title', async (t) => {
+  const cases = [
+    ['sending off', null, null, 'health-dot off', 'Стан сервера: надсилання в Claude вимкнено'],
+    ['running and authorized', 'secret', healthResponse({ ok: true, authorized: true }), 'health-dot ok', 'Стан сервера: Сервер працює'],
+    ['running, wrong token', 'secret', healthResponse({ ok: true, authorized: false }), 'health-dot err', 'Стан сервера: Сервер працює, невірний токен'],
+    ['running, token empty', '  ', healthResponse({ ok: true, authorized: false }), 'health-dot err', 'Стан сервера: Сервер працює, введіть токен'],
+    ['not running', 'secret', () => Promise.reject(new TypeError('Failed to fetch')), 'health-dot err', 'Стан сервера: Сервер не запущений'],
+  ];
+  for (const [name, token, fetchImpl, className, label] of cases) {
+    await t.test(name, async () => {
+      const ui = fetchImpl ? loadUi({ fetchImpl }) : loadUi();
+      if (token !== null) {
+        ui.elements.token.value = token;
+        enableSendToggle(ui);
+        await flush();
+      }
+      const dot = ui.elements.healthDot;
+      assert.equal(dot.className, className);
+      assert.equal(dot.getAttribute('aria-label'), label);
+      assert.equal(dot.getAttribute('title'), label);
+    });
+  }
+});
+
+test('ui.html header dot is grey while the first health check is still running', () => {
+  const ui = loadUi({ fetchImpl: () => new Promise(() => {}) });
+  ui.elements.token.value = 'secret';
+  enableSendToggle(ui);
+  assert.equal(ui.elements.healthDot.className, 'health-dot off');
+  assert.equal(ui.elements.healthDot.getAttribute('aria-label'), 'Стан сервера: перевірка…');
+});
+
+test('ui.html a 401 on a selection POST turns the header dot red', async () => {
+  const ui = loadSendingUi({ fetchImpl: () => Promise.resolve({ ok: false, status: 401 }) });
+  ui.sendSelection('abc', NODES);
+  await flush();
+  assert.equal(ui.elements.healthDot.className, 'health-dot err');
+});
+
+test('ui.html clicking the header dot opens the settings tab', () => {
+  const ui = loadUi();
+  const { healthDot, tabSettings, tabSelection, panelSettings, panelSelection } = ui.elements;
+  healthDot.dispatch('click', {});
+  assert.equal(tabSettings.getAttribute('aria-selected'), 'true');
+  assert.equal(tabSelection.getAttribute('aria-selected'), 'false');
+  assert.equal(panelSettings.hidden, false);
+  assert.equal(panelSelection.hidden, true);
+});
+
+test('ui.html saves the copy format with the other settings and restores it from the plugin', () => {
+  const ui = loadUi();
+  const { format } = ui.elements;
+  format.value = 'idname';
+  format.dispatch('change', {});
+  assert.deepEqual(plain(ui.posted[ui.posted.length - 1].msg), {
+    pluginMessage: { type: 'save-settings', settings: { send: false, token: '', format: 'idname' } },
+  });
+
+  ui.sendPlugin({ type: 'settings', settings: { send: false, token: '', format: 'claude' } });
+  assert.equal(format.value, 'claude');
+});
+
+test('ui.html applies only a known format; settings without format keep the current choice', () => {
+  const ui = loadUi();
+  ui.sendPlugin({ type: 'settings', settings: { send: false, token: '', format: 'link' } });
+  assert.equal(ui.elements.format.value, 'link');
+  ui.sendPlugin({ type: 'settings', settings: { send: false, token: '' } });
+  assert.equal(ui.elements.format.value, 'link', 'older settings without format keep the choice');
+  ui.sendPlugin({ type: 'settings', settings: { send: false, token: '', format: 'bogus' } });
+  assert.equal(ui.elements.format.value, 'link', 'an unknown format is ignored');
+});
+
+test('ui.html format options match the copy formats accepted by code.ts', () => {
+  const optionValues = [...HTML.matchAll(/<option value="([^"]+)">/g)].map((m) => m[1]);
+  const codeSrc = fs.readFileSync(path.join(ROOT, 'code.ts'), 'utf8');
+  const listed = codeSrc.match(/const COPY_FORMATS: readonly CopyFormat\[\] = \[([^\]]*)\]/)[1];
+  assert.deepEqual(listed.match(/'[^']+'/g).map((s) => s.slice(1, -1)), optionValues);
+  const scriptValues = SCRIPT.match(/var FORMAT_VALUES = \[([^\]]*)\]/)[1];
+  assert.deepEqual(scriptValues.match(/'[^']+'/g).map((s) => s.slice(1, -1)), optionValues);
 });

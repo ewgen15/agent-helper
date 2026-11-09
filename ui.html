@@ -23,6 +23,7 @@
     --ok: #13703a;
     --err: #a4191b;
     --err-bg: #ffe0df;
+    --dot-off: #6b7184;       /* сірий індикатор «вимкнено», неактивний текст-сірий */
     --warn: #7a4b00;          /* ~6:1 на фоні */
     --tile-blue: #cfe4ff;   --tile-blue-fg: #0a3d8c;
     --tag-text-bg: #ffe6d6; --tag-text-fg: #7d3b12;
@@ -49,10 +50,21 @@
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex: none; min-width: 0; }
+  .head-start { display: flex; align-items: center; gap: 2px; min-width: 0; }
   .head h1 {
     margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -0.01em;
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  /* Server status dot next to the title: a 24px click target with a 10px coloured disc.
+     The state is also in aria-label and title, so colour is not the only signal. */
+  .health-dot {
+    flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: transparent;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .health-dot::before { content: ""; width: 10px; height: 10px; border-radius: 999px; background: var(--dot-off); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
+  .health-dot.ok::before { background: var(--ok); }
+  .health-dot.err::before { background: var(--err); }
+  .health-dot:hover { background: rgba(255, 255, 255, 0.6); }
   /* Decorative logo: the simplified icon (design/icon/agent-helper-icon-small.svg), fixed colours. */
   .head .logo { display: inline-block; flex: none; width: 22px; height: 22px; margin-right: 8px; vertical-align: middle; }
   .head-end { display: flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
@@ -80,8 +92,9 @@
     box-shadow: 0 4px 14px rgba(70, 60, 130, 0.08);
   }
   .tab {
-    flex: 1 1 auto; min-width: 0; border: 0; border-radius: 999px; background: transparent;
-    padding: 6px 10px; font: inherit; font-weight: 700; color: var(--muted); cursor: pointer; white-space: nowrap;
+    flex: 1 1 0; min-width: 0; border: 0; border-radius: 999px; background: transparent;
+    padding: 6px 6px; font: inherit; font-weight: 700; color: var(--muted); cursor: pointer; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
   }
   .tab:hover { color: var(--fg); background: rgba(255, 255, 255, 0.6); }
   .tab[aria-selected="true"] {
@@ -123,8 +136,9 @@
   textarea { resize: vertical; }
   .check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
   .check input { width: 14px; height: 14px; margin: 0; flex: none; accent-color: var(--accent); }
-  .send-section {
-    display: flex; flex-direction: column; gap: 8px; padding: 8px;
+  /* The settings tab: one card holding the send switch, the format, the token and the server status. */
+  .settings-card {
+    display: flex; flex-direction: column; gap: 10px; padding: 10px;
     background: var(--card); border: 1px solid var(--card-edge); border-radius: 16px; box-shadow: var(--shadow-sm);
   }
   .expand-check:has(input:disabled) { color: var(--muted); cursor: not-allowed; }
@@ -149,10 +163,7 @@
     background: var(--disabled-bg); color: var(--muted); border-color: transparent; box-shadow: none; cursor: not-allowed;
   }
 
-  .detail-actions { display: flex; flex-direction: column; gap: 6px; }
-  .detail-actions button { width: 100%; }
   .comment-box { display: flex; flex-direction: column; gap: 6px; }
-  .comment-box button { align-self: flex-end; }
   .comment-head { display: flex; justify-content: space-between; align-items: baseline; }
   .comment-head label { color: var(--muted); font-weight: 700; }
   .comment-head .count { color: var(--muted); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -160,7 +171,7 @@
   .records-head { display: flex; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; }
   .records-summary { margin-right: auto; color: var(--muted); font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .records-head button { flex: none; white-space: nowrap; }
-  .hint { color: var(--muted); font-weight: 600; }
+  .hint { color: var(--muted); font-weight: 600; font-size: 11px; }
   .records-list {
     background: var(--card); border: 1px solid var(--card-edge); border-radius: 16px; box-shadow: var(--shadow-sm);
     padding: 4px; max-height: 160px; overflow: auto;
@@ -214,7 +225,10 @@
 <body>
 <div class="wrap">
   <div class="head">
-    <h1><svg class="logo" width="22" height="22" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><rect width="128" height="128" rx="28" fill="#0a66f0"/><rect x="26" y="34" width="76" height="56" rx="24" fill="#ffffff"/><path d="M40 84 L30 106 L62 90 Z" fill="#ffffff"/><circle cx="48" cy="62" r="10" fill="#0a66f0"/><path d="M74 62 H86" stroke="#0a66f0" stroke-width="14" stroke-linecap="round"/></svg>Виділені ноди</h1>
+    <div class="head-start">
+      <h1><svg class="logo" width="22" height="22" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><rect width="128" height="128" rx="28" fill="#0a66f0"/><rect x="26" y="34" width="76" height="56" rx="24" fill="#ffffff"/><path d="M40 84 L30 106 L62 90 Z" fill="#ffffff"/><circle cx="48" cy="62" r="10" fill="#0a66f0"/><path d="M74 62 H86" stroke="#0a66f0" stroke-width="14" stroke-linecap="round"/></svg>Виділені ноди</h1>
+      <button id="healthDot" class="health-dot off" type="button" aria-label="Стан сервера: надсилання в Claude вимкнено" title="Стан сервера: надсилання в Claude вимкнено"></button>
+    </div>
     <div class="head-end">
       <span id="countWrap" class="count">Вибрано: <span id="count">0</span></span>
       <span id="summary" class="count" hidden></span>
@@ -225,21 +239,12 @@
   <div id="tablist" class="tabs" role="tablist" aria-label="Розділи">
     <button id="tabSelection" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panelSelection" tabindex="0">Виділення</button>
     <button id="tabRecords" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panelRecords" tabindex="-1"><span id="recordsTabLabel">Записи</span></button>
+    <button id="tabSettings" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panelSettings" tabindex="-1">Налаштування</button>
   </div>
 
   <div id="content" class="content">
     <div id="panelSelection" class="panel" role="tabpanel" aria-labelledby="tabSelection">
   <div id="list" class="list"></div>
-
-  <div class="field">
-    <label for="format">Формат</label>
-    <select id="format">
-      <option value="id">id</option>
-      <option value="idname">id + name</option>
-      <option value="link">link</option>
-      <option value="claude">Claude text</option>
-    </select>
-  </div>
 
   <label class="check">
     <input type="checkbox" id="auto">
@@ -250,37 +255,22 @@
 
   <div id="status" class="status" role="status" aria-live="polite"></div>
 
-  <div class="send-section">
-    <label class="check">
-      <input type="checkbox" id="send">
-      <span>Надсилати в Claude (localhost)</span>
-    </label>
-    <div class="field">
-      <label for="token">Токен</label>
-      <input type="password" id="token" autocomplete="off" spellcheck="false">
-    </div>
-    <div id="health" class="health" role="status" aria-live="polite" hidden></div>
+  <label class="check expand-check" title="Показати вміст інстансів (більше токенів)">
+    <input type="checkbox" id="expandInstances" aria-label="Розгортати інстанси: показати вміст інстансів (більше токенів)" disabled>
+    <span>Розгортати інстанси</span>
+  </label>
 
-    <div class="detail-actions">
-      <label class="check expand-check" title="Показати вміст інстансів (більше токенів)">
-        <input type="checkbox" id="expandInstances" aria-label="Розгортати інстанси: показати вміст інстансів (більше токенів)" disabled>
-        <span>Розгортати інстанси</span>
-      </label>
-      <button id="detailBtn" class="primary" type="button" disabled aria-label="Додати деталі виділення до Claude">Додати деталі</button>
-      <button id="commentToggle" class="secondary" type="button" disabled aria-expanded="false" aria-controls="commentBox">Додати деталі з коментарем</button>
+  <div class="comment-box">
+    <div class="comment-head">
+      <label for="comment">Коментар для Claude</label>
+      <span id="commentCount" class="count">0/2000</span>
     </div>
-    <div id="commentBox" class="comment-box" hidden>
-      <div class="comment-head">
-        <label for="comment">Коментар для Claude</label>
-        <span id="commentCount" class="count">0/2000</span>
-      </div>
-      <textarea id="comment" rows="2" maxlength="2000" placeholder="Коментар для Claude…"></textarea>
-      <button id="commentSend" class="primary" type="button" disabled aria-label="Відправити коментар і деталі до Claude">Відправити</button>
-    </div>
-
-    <div id="sendStatus" class="status" role="status" aria-live="polite"></div>
-
+    <textarea id="comment" rows="2" maxlength="2000" placeholder="Коментар для Claude…"></textarea>
   </div>
+
+  <button id="detailBtn" class="primary" type="button" disabled>Відправити деталі</button>
+
+  <div id="sendStatus" class="status" role="status" aria-live="polite"></div>
     </div>
 
     <div id="panelRecords" class="panel" role="tabpanel" aria-labelledby="tabRecords" hidden>
@@ -292,6 +282,35 @@
       <div id="recordsStatus" class="status" role="status" aria-live="polite"></div>
       <div id="recordsCurrent" class="records-current" hidden></div>
       <div id="recordsList" class="records-list"></div>
+    </div>
+
+    <div id="panelSettings" class="panel" role="tabpanel" aria-labelledby="tabSettings" hidden>
+      <div class="settings-card">
+        <label class="check">
+          <input type="checkbox" id="send" aria-describedby="sendHint">
+          <span>Надсилати в Claude (localhost)</span>
+        </label>
+        <div id="sendHint" class="hint">Передає виділення на локальний сервер, порт 3846.</div>
+
+        <div class="field">
+          <label for="format">Формат</label>
+          <select id="format" aria-describedby="formatHint">
+            <option value="id">id</option>
+            <option value="idname">id + name</option>
+            <option value="link">link</option>
+            <option value="claude">Claude text</option>
+          </select>
+          <div id="formatHint" class="hint">Вигляд тексту для кнопки «Копіювати».</div>
+        </div>
+
+        <div class="field">
+          <label for="token">Токен</label>
+          <input type="password" id="token" autocomplete="off" spellcheck="false" aria-describedby="tokenHint">
+          <div id="tokenHint" class="hint">Той самий токен, що задано для локального сервера.</div>
+        </div>
+
+        <div id="health" class="health" role="status" aria-live="polite" hidden></div>
+      </div>
     </div>
   </div>
 </div>
@@ -314,20 +333,21 @@
   var tokenEl = document.getElementById('token');
   var sendStatusEl = document.getElementById('sendStatus');
   var healthEl = document.getElementById('health');
+  var healthDotEl = document.getElementById('healthDot');
   var detailBtn = document.getElementById('detailBtn');
-  var commentToggleEl = document.getElementById('commentToggle');
-  var commentBoxEl = document.getElementById('commentBox');
   var commentEl = document.getElementById('comment');
   var commentCountEl = document.getElementById('commentCount');
-  var commentSendEl = document.getElementById('commentSend');
   var expandEl = document.getElementById('expandInstances');
+
+  // Format values of the format select; a stored format outside this list is ignored (see applySettings).
+  var FORMAT_VALUES = ['id', 'idname', 'link', 'claude'];
 
   // Detail collection: the plugin builds the Compact Dump on click. The comment is kept in memory only.
   var COMMENT_MAX = 2000;
   var DETAIL_TIMEOUT_MS = 5000;
   var DETAIL_WAIT_TEXT = 'Збираю деталі…';
   var detailSeq = 0;
-  // The request in progress: {requestId, key, withComment, note, commentRaw, posting, timer} or null.
+  // The request in progress: {requestId, key, note, commentRaw, posting, timer} or null.
   var detail = null;
   var selectionKey = null;
 
@@ -357,9 +377,19 @@
   var tablistEl = document.getElementById('tablist');
   var tabSelectionEl = document.getElementById('tabSelection');
   var tabRecordsEl = document.getElementById('tabRecords');
+  var tabSettingsEl = document.getElementById('tabSettings');
   var recordsTabLabelEl = document.getElementById('recordsTabLabel');
   var panelSelectionEl = document.getElementById('panelSelection');
   var panelRecordsEl = document.getElementById('panelRecords');
+  var panelSettingsEl = document.getElementById('panelSettings');
+  // Tab names in tab-bar order; each name maps to its tab button and its panel.
+  var TAB_ORDER = ['selection', 'records', 'settings'];
+  var tabEls = {
+    selection: { tab: tabSelectionEl, panel: panelSelectionEl },
+    records: { tab: tabRecordsEl, panel: panelRecordsEl },
+    settings: { tab: tabSettingsEl, panel: panelSettingsEl }
+  };
+  var activeTab = 'selection'; // session only, never persisted
   var recordsRefreshEl = document.getElementById('recordsRefresh');
   var recordsHintEl = document.getElementById('recordsHint');
   var recordsStatusEl = document.getElementById('recordsStatus');
@@ -370,7 +400,6 @@
   var RECORDS_URL = 'http://localhost:3846/records';
   var RECORDS_TIMEOUT_MS = 2000;
   var RECORDS_DEBOUNCE_MS = 400;
-  var recordsTabOpen = false; // session only, never persisted: true while the Записи tab is selected
   var recordsData = null; // last successful list, newest first; null until the first load
   var recordsCurrent = null; // last "current" from GET /records (null: nothing has arrived yet, or the server sent null)
   var recordsCurrentExpanded = false; // session only
@@ -702,18 +731,18 @@
     scheduleRecordsRefresh();
   }
 
-  // Selects the "selection" or "records" tab. Opening the records tab fetches the list; re-selecting it does not.
+  // Selects one of the three tabs ("selection", "records", "settings"). Opening the records tab fetches the list;
+  // re-selecting it does not.
   function selectTab(name) {
-    var records = name === 'records';
-    var wasOpen = recordsTabOpen;
-    recordsTabOpen = records;
-    tabSelectionEl.setAttribute('aria-selected', String(!records));
-    tabSelectionEl.tabIndex = records ? -1 : 0;
-    tabRecordsEl.setAttribute('aria-selected', String(records));
-    tabRecordsEl.tabIndex = records ? 0 : -1;
-    panelSelectionEl.hidden = records;
-    panelRecordsEl.hidden = !records;
-    if (records && !wasOpen) refreshRecords();
+    var wasRecords = activeTab === 'records';
+    activeTab = name;
+    TAB_ORDER.forEach(function (key) {
+      var on = key === name;
+      tabEls[key].tab.setAttribute('aria-selected', String(on));
+      tabEls[key].tab.tabIndex = on ? 0 : -1;
+      tabEls[key].panel.hidden = !on;
+    });
+    if (name === 'records' && !wasRecords) refreshRecords();
   }
 
   function buildText(format, fileKey, nodes) {
@@ -776,16 +805,28 @@
     sendStatusEl.className = 'status' + (kind ? ' ' + kind : '');
   }
 
-  // Persists the checkbox and token through the plugin's clientStorage.
+  // Persists the send checkbox, the token and the copy format through the plugin's clientStorage.
   function saveSettings() {
     parent.postMessage({
-      pluginMessage: { type: 'save-settings', settings: { send: sendEl.checked, token: tokenEl.value } }
+      pluginMessage: { type: 'save-settings', settings: { send: sendEl.checked, token: tokenEl.value, format: formatEl.value } }
     }, '*');
   }
 
-  // Shows one of HEALTH_STATES, or hides the line when state is null.
+  // The header dot mirrors the server state. Green = working; red = not reachable or token not accepted;
+  // grey = sending is off, or the first check is still running. The label names the state (not colour alone).
+  function setHealthDot(key) {
+    var s = HEALTH_STATES[key];
+    var dotClass = key === 'ok' ? 'ok' : (s ? 'err' : 'off');
+    var label = 'Стан сервера: ' + (s ? s.text.replace(/^● /, '') : key === 'checking' ? 'перевірка…' : 'надсилання в Claude вимкнено');
+    healthDotEl.className = 'health-dot ' + dotClass;
+    healthDotEl.setAttribute('aria-label', label);
+    healthDotEl.setAttribute('title', label);
+  }
+
+  // Shows one of HEALTH_STATES, or hides the line when state is null (sending is off).
   function setHealth(state) {
     var s = state ? HEALTH_STATES[state] : null;
+    setHealthDot(s ? state : 'off');
     if (!s) {
       healthEl.hidden = true;
       healthEl.textContent = '';
@@ -848,6 +889,7 @@
   // Polls only while the send checkbox is on.
   function syncHealth() {
     if (sendEl.checked) {
+      setHealthDot('checking');
       startHealth();
     } else {
       stopHealth();
@@ -870,6 +912,8 @@
     if (typeof settings.send !== 'boolean' || typeof settings.token !== 'string') return;
     sendEl.checked = settings.send;
     tokenEl.value = settings.token;
+    // format is optional: older stored settings have none, and an unknown value keeps the current choice.
+    if (FORMAT_VALUES.indexOf(settings.format) !== -1) formatEl.value = settings.format;
     syncHealth();
     updateDetailUi();
     refreshRecords(); // on start: loads the list when sending is on (does nothing when it is off)
@@ -976,25 +1020,16 @@
     return sendEl.checked && tokenEl.value.trim() !== '' && state.nodes.length > 0;
   }
 
-  // Keeps the detail buttons in step with the send settings, the selection and any request in progress.
+  // Keeps the detail button in step with the send settings, the selection and any request in progress.
   function updateDetailUi() {
     var enabled = canRequestDetail() && !detail;
     detailBtn.disabled = !enabled;
-    commentToggleEl.disabled = !enabled;
-    commentSendEl.disabled = !enabled;
     expandEl.disabled = !enabled;
     commentCountEl.textContent = commentEl.value.length + '/' + COMMENT_MAX;
   }
 
-  function setCommentOpen(open) {
-    commentBoxEl.hidden = !open;
-    commentToggleEl.setAttribute('aria-expanded', String(open));
-    if (open) commentEl.focus();
-  }
-
   function clearComment() {
     commentEl.value = '';
-    setCommentOpen(false);
     updateDetailUi();
   }
 
@@ -1006,16 +1041,16 @@
     detail = null;
   }
 
-  // Asks the plugin for the detail of the current selection. withComment: also send the comment.
-  function requestDetail(withComment) {
+  // Asks the plugin for the detail of the current selection. The detail always goes with the comment text;
+  // an empty comment sends no note.
+  function requestDetail() {
     if (detail || !canRequestDetail()) return;
     var id = ++detailSeq;
     var raw = commentEl.value;
     detail = {
       requestId: id,
       key: selectedIdsKey(),
-      withComment: withComment,
-      note: withComment ? raw.trim() : '',
+      note: raw.trim(),
       commentRaw: raw,
       posting: false,
       timer: null
@@ -1046,7 +1081,7 @@
     if (current.note) opts.note = current.note;
     sendToClaude(state.fileKey, state.nodes, opts).then(function (ok) {
       if (detail === current) detail = null;
-      if (ok && current.withComment && commentEl.value === current.commentRaw) clearComment();
+      if (ok && commentEl.value === current.commentRaw) clearComment();
       updateDetailUi();
     });
   }
@@ -1197,6 +1232,9 @@
     updateDetailUi();
     recordsTokenChanged();
   });
+  formatEl.addEventListener('change', function () {
+    saveSettings();
+  });
 
   tabSelectionEl.addEventListener('click', function () {
     selectTab('selection');
@@ -1204,16 +1242,27 @@
   tabRecordsEl.addEventListener('click', function () {
     selectTab('records');
   });
-  // Arrow keys, Home and End move between the two tabs (the ARIA tabs pattern); Enter and Space come from the buttons.
+  tabSettingsEl.addEventListener('click', function () {
+    selectTab('settings');
+  });
+  // The header dot opens the settings tab, where the server state is also written out.
+  healthDotEl.addEventListener('click', function () {
+    selectTab('settings');
+    tabSettingsEl.focus();
+  });
+  // Arrow keys move to the neighbouring tab (wrapping), Home and End to the first and last tab;
+  // Enter and Space come from the buttons (the ARIA tabs pattern).
   tablistEl.addEventListener('keydown', function (e) {
+    var at = TAB_ORDER.indexOf(activeTab);
     var target = null;
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') target = recordsTabOpen ? 'selection' : 'records';
-    else if (e.key === 'Home') target = 'selection';
-    else if (e.key === 'End') target = 'records';
+    if (e.key === 'ArrowRight') target = TAB_ORDER[(at + 1) % TAB_ORDER.length];
+    else if (e.key === 'ArrowLeft') target = TAB_ORDER[(at + TAB_ORDER.length - 1) % TAB_ORDER.length];
+    else if (e.key === 'Home') target = TAB_ORDER[0];
+    else if (e.key === 'End') target = TAB_ORDER[TAB_ORDER.length - 1];
     if (!target) return;
     e.preventDefault();
     selectTab(target);
-    (target === 'records' ? tabRecordsEl : tabSelectionEl).focus();
+    tabEls[target].tab.focus();
   });
 
   collapseBtn.addEventListener('click', function () {
@@ -1224,21 +1273,14 @@
   });
 
   detailBtn.addEventListener('click', function () {
-    requestDetail(false);
-  });
-  commentToggleEl.addEventListener('click', function () {
-    setCommentOpen(commentBoxEl.hidden);
-    updateDetailUi();
+    requestDetail();
   });
   commentEl.addEventListener('input', function () {
     if (commentEl.value.length > COMMENT_MAX) commentEl.value = commentEl.value.slice(0, COMMENT_MAX);
     updateDetailUi();
   });
-  commentSendEl.addEventListener('click', function () {
-    requestDetail(true);
-  });
 
-  setCommentOpen(false);
+  setHealthDot('off');
   render();
   updateRecordsUi();
 })();

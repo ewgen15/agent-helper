@@ -14,9 +14,20 @@ interface SelectionMessage {
   nodes: SelectedNode[];
 }
 
+// The copy format values; the same list as the format select in ui.html.
+type CopyFormat = 'id' | 'idname' | 'link' | 'claude';
+
 interface Settings {
   send: boolean;
   token: string;
+  format: CopyFormat;
+}
+
+// What the UI sends and what storage may hold: format is optional (older stored settings have none).
+interface SettingsInput {
+  send: boolean;
+  token: string;
+  format?: unknown;
 }
 
 interface SettingsMessage {
@@ -56,24 +67,34 @@ type PluginMessage = SelectionMessage | SettingsMessage | DetailMessage | Detail
 type UIMessage =
   | { type: 'notify'; message: string }
   | { type: 'close' }
-  | { type: 'save-settings'; settings: Settings }
+  | { type: 'save-settings'; settings: SettingsInput }
   | { type: 'request-detail'; requestId: number; expandInstances?: boolean }
   | { type: 'resize'; collapsed: boolean };
 
 const SETTINGS_KEY = 'settings';
-const DEFAULT_SETTINGS: Settings = { send: false, token: '' };
+const SETTINGS_KEYS: readonly string[] = ['send', 'token', 'format'];
+const COPY_FORMATS: readonly CopyFormat[] = ['id', 'idname', 'link', 'claude'];
+const DEFAULT_SETTINGS: Settings = { send: false, token: '', format: 'id' };
 
-// Settings must be exactly { send: boolean, token: string } with no extra keys.
-function isSettings(value: unknown): value is Settings {
+// Settings may have only the keys send, token and format, with send: boolean and token: string.
+function isSettingsInput(value: unknown): value is SettingsInput {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return false;
   }
   const record = value as Record<string, unknown>;
-  const keys = Object.keys(record);
-  if (keys.length !== 2 || !keys.includes('send') || !keys.includes('token')) {
+  if (Object.keys(record).some((key) => !SETTINGS_KEYS.includes(key))) {
     return false;
   }
   return typeof record.send === 'boolean' && typeof record.token === 'string';
+}
+
+// An unknown or missing format becomes the default; it never fails the whole settings object.
+function parseCopyFormat(value: unknown): CopyFormat {
+  return COPY_FORMATS.find((format) => format === value) ?? DEFAULT_SETTINGS.format;
+}
+
+function toSettings(input: SettingsInput): Settings {
+  return { send: input.send, token: input.token, format: parseCopyFormat(input.format) };
 }
 
 function isUIMessage(value: unknown): value is UIMessage {
@@ -88,7 +109,7 @@ function isUIMessage(value: unknown): value is UIMessage {
     return typeof record.message === 'string';
   }
   if (record.type === 'save-settings') {
-    return isSettings(record.settings);
+    return isSettingsInput(record.settings);
   }
   if (record.type === 'request-detail') {
     return typeof record.requestId === 'number' && Number.isFinite(record.requestId);
@@ -1582,8 +1603,8 @@ function postSelection(): void {
 async function loadSettings(): Promise<Settings> {
   try {
     const stored: unknown = await figma.clientStorage.getAsync(SETTINGS_KEY);
-    if (isSettings(stored)) {
-      return { send: stored.send, token: stored.token };
+    if (isSettingsInput(stored)) {
+      return toSettings(stored);
     }
   } catch {
     // Storage unavailable: fall back to defaults.
@@ -1593,7 +1614,11 @@ async function loadSettings(): Promise<Settings> {
 
 async function saveSettings(settings: Settings): Promise<void> {
   try {
-    await figma.clientStorage.setAsync(SETTINGS_KEY, { send: settings.send, token: settings.token });
+    await figma.clientStorage.setAsync(SETTINGS_KEY, {
+      send: settings.send,
+      token: settings.token,
+      format: settings.format,
+    });
   } catch {
     figma.notify('Не вдалося зберегти налаштування');
   }
@@ -1621,7 +1646,7 @@ figma.ui.onmessage = (msg: unknown) => {
       figma.closePlugin();
       break;
     case 'save-settings':
-      void saveSettings(msg.settings);
+      void saveSettings(toSettings(msg.settings));
       break;
     case 'request-detail':
       void handleRequestDetail(msg.requestId, msg.expandInstances === true);
