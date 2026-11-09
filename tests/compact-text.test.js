@@ -89,7 +89,7 @@ test('TEXT: name omitted when equal to characters; tx quoted; cn shown', async (
   assert.deepEqual(bodyOf(renderCompactText(detailOf([onlyText]))), ['5:6 TEXT 80x16 "Hello"']);
 });
 
-test('INSTANCE: reproduces the §5.2 example line and the not-expanded marker', async () => {
+test('INSTANCE: reproduces the §5.2 example line; the true child count is shown as cn', async () => {
   const { renderCompactText } = await load();
   const inst = {
     id: '61:1022', n: 'Tabs / Process content', t: 'INSTANCE', w: 1200, h: 48, sz: 'fill,fixed',
@@ -104,7 +104,42 @@ test('INSTANCE: reproduces the §5.2 example line and the not-expanded marker', 
     '61:1022 INSTANCE "Tabs / Process content" 1200x48 fill,fixed comp="Tabs" {Size=M, Type=Underline} props{Tab count=4} '
       + 'ot{"Tab 1/Label":"Overview","Tab 2/Label":"Parameters","Tab 3/Label":"Results","Tab 4/Label":"Audit trail"} '
       + 'oi{"Tab 2":"State=Active"} cn=4',
-    '  …+0 nodes (instance children not expanded)',
+  ]);
+});
+
+test('INSTANCE listing: children with names, types and count are listed under the instance', async () => {
+  const { renderCompactText, renderCompactJson } = await load();
+  const inst = {
+    id: '70:1', n: 'Container Button', t: 'INSTANCE', w: 120, h: 40, c: 'Button', cn: 2,
+    ch: [
+      { id: '70:2', n: 'Label', t: 'TEXT', tx: 'Back' },
+      { id: '70:3', n: 'Icon', t: 'INSTANCE', c: 'Arrow', cn: 1, ch: [{ id: '70:4', n: 'Vector', t: 'VECTOR' }] },
+    ],
+  };
+  assert.deepEqual(bodyOf(renderCompactText(detailOf([inst]), { fileKey: 'K' })), [
+    '70:1 INSTANCE "Container Button" 120x40 comp="Button" cn=2',
+    '  70:2 TEXT "Label" "Back"',
+    '  70:3 INSTANCE "Icon" comp="Arrow" cn=1',
+    '    70:4 VECTOR "Vector"',
+  ]);
+  const json = JSON.parse(renderCompactJson(detailOf([inst])));
+  assert.deepEqual(json.roots[0].ch, [
+    { id: '70:2', n: 'Label', t: 'TEXT', tx: 'Back' },
+    { id: '70:3', n: 'Icon', t: 'INSTANCE', c: 'Arrow', cn: 1, ch: [{ id: '70:4', n: 'Vector', t: 'VECTOR' }] },
+  ]);
+});
+
+test('INSTANCE listing: levels 1..3 are not cut by the shown depth; deeper levels are', async () => {
+  const { renderCompactText } = await load();
+  // Shown depth 1: D1..D3 sit on instance levels 1..3 and stay; D4 would be on level 4 and is cut.
+  const d3 = { id: 'D3', n: 'D3', t: 'FRAME', ch: [{ id: 'D4', n: 'D4', t: 'FRAME' }] };
+  const inst = { id: 'I0', n: 'Tabs', t: 'INSTANCE', cn: 1, ch: [{ id: 'D1', n: 'D1', t: 'FRAME', ch: [{ id: 'D2', n: 'D2', t: 'FRAME', ch: [d3] }] }] };
+  assert.deepEqual(bodyOf(renderCompactText(detailOf([inst]), { depth: 1 })), [
+    'I0 INSTANCE "Tabs" cn=1',
+    '  D1 FRAME "D1"',
+    '    D2 FRAME "D2"',
+    '      D3 FRAME "D3" cn=1',
+    '        …+1 nodes (depth limit)',
   ]);
 });
 
@@ -242,9 +277,9 @@ test('budget: BFS spends maxNodes level by level and marks every cut parent', as
   assert.deepEqual(bodyOf(renderCompactText(detailOf([tree()]), { maxNodes: 3 })), [
     'R FRAME "Root"',
     '  A FRAME "A" cn=2',
-    '    …+2 nodes',
+    '    …+2 nodes (budget)',
     '  B FRAME "B" cn=2',
-    '    …+2 nodes',
+    '    …+2 nodes (budget)',
   ]);
 
   // maxNodes 4: A and B both shown, one grandchild fits; B gets none because A's branch took it.
@@ -252,9 +287,9 @@ test('budget: BFS spends maxNodes level by level and marks every cut parent', as
     'R FRAME "Root"',
     '  A FRAME "A" cn=2',
     '    a1 FRAME "a1"',
-    '    …+1 nodes',
+    '    …+1 nodes (budget)',
     '  B FRAME "B" cn=2',
-    '    …+2 nodes',
+    '    …+2 nodes (budget)',
   ]);
 });
 
@@ -441,4 +476,30 @@ test('renderDetail dispatches on options.format', async () => {
   assert.equal(renderDetail(detail, {}), renderCompactText(detail, {}));
   assert.equal(renderDetail(detail, { format: 'compact-text' }), renderCompactText(detail, {}));
   assert.equal(renderDetail(detail, { format: 'json' }), renderCompactJson(detail, {}));
+});
+
+test('budget: three roots, the first large, all roots keep their first-level children', async () => {
+  const { renderCompactText } = await load();
+  const big = { id: 'B0', t: 'FRAME', n: 'Big', ch: Array.from({ length: 30 }, (_, i) => ({ id: `B${i + 1}`, t: 'FRAME', n: `Node ${String.fromCharCode(65 + i)}x` })) };
+  const two = { id: 'T0', t: 'FRAME', n: 'Two', ch: [{ id: 'T1', t: 'FRAME', n: 'Alpha' }, { id: 'T2', t: 'FRAME', n: 'Beta' }] };
+  const three = { id: 'H0', t: 'FRAME', n: 'Three', ch: [{ id: 'H1', t: 'FRAME', n: 'Delta' }, { id: 'H2', t: 'FRAME', n: 'Epsilon' }] };
+  const body = bodyOf(renderCompactText(detailOf([big, two, three]), { maxNodes: 9 }));
+  assert.ok(body.includes('  T1 FRAME "Alpha"'), 'root 2 first child');
+  assert.ok(body.includes('  H1 FRAME "Delta"'), 'root 3 first child');
+  assert.ok(body.includes('  B1 FRAME "Node Ax"'), 'root 1 still gets its share');
+});
+
+test('cut roots: the root summary is passed through as an entry after the roots', async () => {
+  const { renderCompactText, renderCompactJson } = await load();
+  const root = { id: 'R', t: 'FRAME', n: 'R', ch: ['…+4 nodes (timeout)'] };
+  const summary = '…cut roots: R (timeout)';
+  const out = renderCompactText(detailOf([root, summary]));
+  assert.equal(bodyOf(out).at(-1), summary);
+  assert.equal(JSON.parse(renderCompactJson(detailOf([root, summary]))).roots.at(-1), summary);
+});
+
+test('paint values: @style:<name> and raw "!" values are plain strings in the s/f fields', async () => {
+  const { renderCompactText } = await load();
+  const rec = { id: '71:1', n: 'Box', t: 'FRAME', w: 1, h: 1, f: '@style:Brand Primary', s: '#464749! 1' };
+  assert.deepEqual(bodyOf(renderCompactText(detailOf([rec]))), ['71:1 FRAME "Box" 1x1 f=@style:Brand Primary s=#464749!·1']);
 });

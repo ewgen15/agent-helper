@@ -52,11 +52,13 @@ interface DetailErrorMessage {
 
 type PluginMessage = SelectionMessage | SettingsMessage | DetailMessage | DetailErrorMessage;
 
+// expandInstances is optional: only boolean true expands instance subtrees; any other value is ignored (false).
 type UIMessage =
   | { type: 'notify'; message: string }
   | { type: 'close' }
   | { type: 'save-settings'; settings: Settings }
-  | { type: 'request-detail'; requestId: number };
+  | { type: 'request-detail'; requestId: number; expandInstances?: boolean }
+  | { type: 'resize'; collapsed: boolean };
 
 const SETTINGS_KEY = 'settings';
 const DEFAULT_SETTINGS: Settings = { send: false, token: '' };
@@ -91,6 +93,10 @@ function isUIMessage(value: unknown): value is UIMessage {
   if (record.type === 'request-detail') {
     return typeof record.requestId === 'number' && Number.isFinite(record.requestId);
   }
+  // collapsed must be exactly a boolean; any other value (or a missing key) is ignored.
+  if (record.type === 'resize') {
+    return typeof record.collapsed === 'boolean';
+  }
   return false;
 }
 
@@ -104,11 +110,17 @@ function isUIMessage(value: unknown): value is UIMessage {
 
 type CompactInclude = 'geometry' | 'layout' | 'paint' | 'text' | 'instance' | 'hidden';
 
+// Why the collector stopped reading a node's children (the node keeps the cut in `cut`).
+// The compactor adds the budget cut itself. Markers: "…+N nodes (budget|timeout|visitCap)".
+type CutReason = 'timeout' | 'visitCap';
+
 interface CompactOptions {
   depth: number;
   maxNodes: number;
   maxTextChars: number;
   include: CompactInclude[];
+  // false (default): an INSTANCE lists its direct children (id, name, type, count) and nothing deeper.
+  expandInstances: boolean;
 }
 
 type PropValue = string | boolean;
@@ -165,9 +177,23 @@ interface RawNode {
   effects?: string;
   textStyle?: string;
   component?: RawComponent;
-  children?: RawNode[];
+  children?: RawNode[]; // a prefix of the visible children when `cut` is set
   childCount?: number;
+  cut?: CutReason;
+  // Set on an instance listing's last level: how many nodes lie below, and how many levels deep.
+  below?: BelowCount;
 }
+
+interface BelowCount {
+  count: number;
+  levels: number;
+  capped?: boolean; // the walk stopped early: count and levels are lower bounds ("≥")
+}
+
+// An INSTANCE (without expandInstances) lists its content this many levels deep (listing level 1 =
+// the instance's direct children). Nodes on the last level keep their child count and a
+// "…+N nodes, ще M рівні" marker instead of deeper children.
+const INSTANCE_LIST_DEPTH = 3;
 
 interface CompactRecord {
   id?: string;
@@ -218,6 +244,7 @@ const COMPACT_DEFAULTS: CompactOptions = {
   maxNodes: 60,
   maxTextChars: 60,
   include: ['geometry', 'layout', 'paint', 'text', 'instance'],
+  expandInstances: false,
 };
 const COMPACT_ALIGN: Record<Align, string> = {
   MIN: 'S',
@@ -238,12 +265,18 @@ interface CompactContext {
 }
 
 // A pending expansion of one emitted record's children, consumed BFS-level by level.
+// listing: an INSTANCE's direct children (listed, never expanded). unread: children the collector
+// did not read (cut by `cut`); they are reported with a marker after the listed ones.
 interface CompactTask {
   record: CompactRecord;
   node: RawNode;
   childDepth: number;
   units: CompactUnit[];
   next: number;
+  listing: boolean; // listed children of an instance listing (listLevel = this record's level there)
+  listLevel: number;
+  unread: number;
+  cut?: CutReason;
 }
 
 type CompactUnit =
@@ -263,6 +296,7 @@ function normalizeCompactOptions(options: Partial<CompactOptions>): CompactOptio
     maxNodes: compactClampInt(options.maxNodes, 1, 300, COMPACT_DEFAULTS.maxNodes),
     maxTextChars: compactClampInt(options.maxTextChars, 0, 200, COMPACT_DEFAULTS.maxTextChars),
     include: Array.isArray(options.include) ? options.include.slice() : COMPACT_DEFAULTS.include.slice(),
+    expandInstances: options.expandInstances === true,
   };
 }
 
@@ -282,9 +316,21 @@ function visibleChildCount(ctx: CompactContext, node: RawNode): number {
   return node.children !== undefined ? shownChildren(ctx, node).length : (node.childCount ?? 0);
 }
 
-// Instances never expand their children by default (§2.4 rule 3).
+// Instances expand their children only with expandInstances (§2.4 rule 3); otherwise they list them.
+function expandsChildren(ctx: CompactContext, node: RawNode): boolean {
+  return node.type !== 'INSTANCE' || ctx.opts.expandInstances;
+}
+
 function canExpandCompact(ctx: CompactContext, node: RawNode, depth: number): boolean {
-  return depth < ctx.opts.depth && node.type !== 'INSTANCE' && shownChildren(ctx, node).length > 0;
+  return depth < ctx.opts.depth && expandsChildren(ctx, node) && shownChildren(ctx, node).length > 0;
+}
+
+// Visible children that the collector did not read (only when it cut the read; see `cut`).
+function unreadCount(node: RawNode): number {
+  if (node.cut === undefined) {
+    return 0;
+  }
+  return Math.max(0, (node.childCount ?? 0) - (node.children ?? []).length);
 }
 
 function subtreeSize(ctx: CompactContext, node: RawNode): number {
@@ -551,16 +597,92 @@ function compactNodeRecord(ctx: CompactContext, node: RawNode, depth: number): C
   return rec;
 }
 
+// Ukrainian plural for "рівень" (1 рівень, 2 рівні, 5 рівнів).
+function levelWord(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'рівень';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'рівні';
+  return 'рівнів';
+}
+
+// One listed child of an instance: id, name, type, TEXT characters, nested component name, child count.
+// On the last listing level the content below is summarized instead ("…+14 nodes, ще 4 рівні").
+function compactListingRecord(ctx: CompactContext, node: RawNode, listLevel: number): CompactRecord {
+  const rec: CompactRecord = { id: node.id, t: node.type };
+  if (!(node.type === 'TEXT' && node.name === node.characters)) {
+    rec.n = node.name;
+  }
+  if (compactHas(ctx, 'text') && node.type === 'TEXT' && node.characters) {
+    rec.tx = truncateCompactText(node.characters, ctx.opts.maxTextChars);
+  }
+  if (compactHas(ctx, 'instance') && node.component !== undefined) {
+    rec.c = node.component.name;
+  }
+  const count = visibleChildCount(ctx, node);
+  if (count > 0) {
+    rec.cn = count;
+  }
+  if (listLevel >= INSTANCE_LIST_DEPTH && node.below !== undefined && (node.below.count > 0 || node.below.capped === true)) {
+    // A capped count is a lower bound: "…+≥N nodes, ще ≥M рівні" (≥ is part of the marker text only).
+    if (node.below.capped === true && node.below.count === 0) {
+      appendCompactEntry(rec, '…+? nodes (walk capped)');
+    } else {
+      const lb = node.below.capped === true ? '≥' : '';
+      appendCompactEntry(rec, `…+${lb}${node.below.count} nodes, ще ${lb}${node.below.levels} ${levelWord(node.below.levels)}`);
+    }
+  }
+  return rec;
+}
+
+// Listing task for an instance's children (listLevel 0 = the instance). Listing ignores depth but
+// stops after INSTANCE_LIST_DEPTH levels. Reads cut by the collector are reported as a marker.
+function listingTaskFor(ctx: CompactContext, node: RawNode, record: CompactRecord, listLevel: number): CompactTask | undefined {
+  if (listLevel >= INSTANCE_LIST_DEPTH) {
+    return undefined;
+  }
+  const listed = shownChildren(ctx, node);
+  const unread = unreadCount(node);
+  if (listed.length === 0 && unread === 0) {
+    return undefined;
+  }
+  return {
+    record,
+    node,
+    childDepth: listLevel + 1,
+    units: listed.map((child): CompactUnit => ({ kind: 'record', node: child, cost: 1 })),
+    next: 0,
+    listing: true,
+    listLevel,
+    unread,
+    cut: node.cut,
+  };
+}
+
+// Task for a record's children. An INSTANCE (without expandInstances) gets a listing; other nodes
+// expand while depth < opts.depth. Reads cut by the collector are kept as a task (marker only).
 function compactTaskFor(ctx: CompactContext, node: RawNode, record: CompactRecord, depth: number): CompactTask | undefined {
-  if (!canExpandCompact(ctx, node, depth)) {
+  if (node.type === 'INSTANCE' && !ctx.opts.expandInstances) {
+    return listingTaskFor(ctx, node, record, 0);
+  }
+  const unread = unreadCount(node);
+  if (depth >= ctx.opts.depth) {
+    return undefined;
+  }
+  const shown = shownChildren(ctx, node);
+  if (shown.length === 0 && unread === 0) {
     return undefined;
   }
   return {
     record,
     node,
     childDepth: depth + 1,
-    units: compactUnits(ctx, shownChildren(ctx, node), depth + 1),
+    units: compactUnits(ctx, shown, depth + 1),
     next: 0,
+    listing: false,
+    listLevel: 0,
+    unread,
+    cut: node.cut,
   };
 }
 
@@ -571,10 +693,27 @@ function appendCompactEntry(record: CompactRecord, entry: CompactEntry): void {
   record.ch.push(entry);
 }
 
+// Explicit cut marker (spec §2.4 rule 5, plus the reason): "…+N nodes (budget)" and so on.
+function compactCutMarker(count: number, reason: string): string {
+  return `…+${count} nodes (${reason})`;
+}
+
+// Nodes a unit stands for when it is dropped: a listed child is one node, a subtree is all its shown nodes.
+function unitSize(ctx: CompactContext, unit: CompactUnit, listing: boolean): number {
+  if (listing) {
+    return 1;
+  }
+  if (unit.kind === 'group') {
+    return unit.members.reduce((sum, member) => sum + subtreeSize(ctx, member), 0);
+  }
+  return subtreeSize(ctx, unit.node);
+}
+
 // Pure compaction of raw selection data into compact entries (see spec §2.4, §3).
 // Rules: hidden nodes are skipped unless include has 'hidden'; roots are always emitted
 // (up to 100) and count toward maxNodes; the rest of the budget is spent BFS-level by
-// level, round-robin across parents; any cut is marked explicitly ("…+N nodes", "…+N roots").
+// level, round-robin across parents (so every root gets its first-level children before any
+// root gets a second level). Cuts are explicit markers (see compactCutMarker, roots marker).
 function compactTree(roots: readonly RawNode[], options: Partial<CompactOptions> = {}): CompactResult {
   const ctx: CompactContext = { opts: normalizeCompactOptions(options), signatures: new Map() };
   const shown = roots.filter((node) => isCompactShown(ctx, node));
@@ -611,7 +750,18 @@ function compactTree(roots: readonly RawNode[], options: Partial<CompactOptions>
         used += unit.cost;
         task.next++;
         progress = true;
-        if (unit.kind === 'group') {
+        if (task.listing && unit.kind === 'record') {
+          const childLevel = task.listLevel + 1;
+          const listed = compactListingRecord(ctx, unit.node, childLevel);
+          if (listed.ch !== undefined) {
+            truncated = true;
+          }
+          appendCompactEntry(task.record, listed);
+          const child = listingTaskFor(ctx, unit.node, listed, childLevel);
+          if (child !== undefined) {
+            nextLevel.push(child);
+          }
+        } else if (unit.kind === 'group') {
           appendCompactEntry(task.record, {
             x: unit.members.length,
             tpl: unit.tpl,
@@ -637,11 +787,13 @@ function compactTree(roots: readonly RawNode[], options: Partial<CompactOptions>
       if (task.next < task.units.length) {
         const dropped = task.units
           .slice(task.next)
-          .reduce((sum, unit) => sum + (unit.kind === 'group'
-            ? unit.members.reduce((inner, member) => inner + subtreeSize(ctx, member), 0)
-            : subtreeSize(ctx, unit.node)), 0);
+          .reduce((sum, unit) => sum + unitSize(ctx, unit, task.listing), 0);
         task.record.cn = visibleChildCount(ctx, task.node);
-        appendCompactEntry(task.record, `…+${dropped} nodes`);
+        appendCompactEntry(task.record, compactCutMarker(dropped, 'budget'));
+        truncated = true;
+      }
+      if (task.unread > 0 && task.cut !== undefined) {
+        appendCompactEntry(task.record, compactCutMarker(task.unread, task.cut));
         truncated = true;
       }
     }
@@ -673,8 +825,8 @@ const DETAIL_OVERRIDE_LIMIT = 200;
 const DETAIL_TEXT_CHARS = 200;
 const NAME_CACHE_LIMIT = 2000;
 const DETAIL_INCLUDE: CompactInclude[] = ['geometry', 'layout', 'paint', 'text', 'instance'];
-const DETAIL_TIER_A: CompactOptions = { depth: 2, maxNodes: 60, maxTextChars: 60, include: DETAIL_INCLUDE };
-const DETAIL_TIER_B: CompactOptions = { depth: 6, maxNodes: 300, maxTextChars: 120, include: DETAIL_INCLUDE };
+const DETAIL_TIER_A: CompactOptions = { depth: 2, maxNodes: 60, maxTextChars: 60, include: DETAIL_INCLUDE, expandInstances: false };
+const DETAIL_TIER_B: CompactOptions = { depth: 6, maxNodes: 300, maxTextChars: 120, include: DETAIL_INCLUDE, expandInstances: false };
 const ALIGN_VALUES: readonly string[] = ['MIN', 'CENTER', 'MAX', 'SPACE_BETWEEN', 'BASELINE'];
 const SIZING_VALUES: readonly string[] = ['FIXED', 'HUG', 'FILL'];
 const CORNER_FIELDS = ['topLeftRadius', 'topRightRadius', 'bottomRightRadius', 'bottomLeftRadius'];
@@ -707,12 +859,16 @@ const variableNames: NameCache = new Map();
 const styleNames: NameCache = new Map();
 const nodeNames: NameCache = new Map();
 
+// Read state of ONE selection root: its share of the 150 ms time box and of the visit cap.
+// Shares are handed out in turn (see buildDetail), so an unused share rolls over to the next roots.
 interface CollectState {
-  startedAt: number;
-  visitCap: number;
+  deadline: number; // Date.now() after which this root reads nothing more
+  visitCap: number; // nodes this root may read
   visited: number;
-  stopped?: 'timeout' | 'visitCap';
+  stopped?: CutReason;
   include: CompactInclude[];
+  expandInstances: boolean;
+  below: BelowBudget; // shared by this root's instance listing leaves
 }
 
 // A read node whose children still have to be read (BFS queue entry).
@@ -720,6 +876,47 @@ interface Expansion {
   raw: RawNode;
   node: SceneNode;
   depth: number;
+  listLevel: number; // 0 = normal tree; 1..INSTANCE_LIST_DEPTH = inside an instance listing
+}
+
+// Counting budget of ONE selection root for the content below its instance listings; all of the
+// root's listing leaves share it. The deadline is the root's time box (Date.now() value).
+interface BelowBudget {
+  left: number; // nodes that may still be counted
+  sinceCheck: number; // nodes counted since the last time-box check
+  deadline: number;
+}
+
+const BELOW_VISIT_CAP = 5000; // nodes counted per root for listing summaries (spec §3 bound)
+const BELOW_TIME_CHECK_EVERY = 256; // the time box is checked after this many counted nodes
+
+// Visible descendants of a node (count) and how many levels deep they go (levels).
+// Iterative (explicit stack, so depth cannot overflow the call stack) and bounded: it stops
+// when the shared budget is spent or the time box has passed, and then returns a lower bound
+// with capped: true. A subtree that fits the budget is counted exactly.
+function belowOf(node: SceneNode, include: CompactInclude[], budget: BelowBudget): BelowCount {
+  let count = 0;
+  let levels = 0;
+  const stack: { node: SceneNode; depth: number }[] = [{ node, depth: 0 }];
+  for (let item = stack.pop(); item !== undefined; item = stack.pop()) {
+    for (const child of childNodesOf(item.node, include)) {
+      if (budget.left <= 0) {
+        return { count, levels, capped: true };
+      }
+      if (budget.sinceCheck >= BELOW_TIME_CHECK_EVERY) {
+        budget.sinceCheck = 0;
+        if (Date.now() > budget.deadline) {
+          return { count, levels, capped: true };
+        }
+      }
+      budget.left -= 1;
+      budget.sinceCheck += 1;
+      count += 1;
+      levels = Math.max(levels, item.depth + 1);
+      stack.push({ node: child, depth: item.depth + 1 });
+    }
+  }
+  return { count, levels };
 }
 
 interface OverrideReading {
@@ -841,12 +1038,13 @@ function toHex(channel: number): string {
   return Math.round(channel * 255).toString(16).padStart(2, '0').toUpperCase();
 }
 
-// Hex for solid paints (with alpha as a percent), a short tag for other paint kinds.
+// Hex for solid paints (alpha as a percent), with a trailing "!" marking a raw value that is bound
+// to neither a variable nor a style, e.g. "#464749!" or "#112233/50!". Other kinds: a short tag.
 function paintFallback(paint: Paint): string {
   if (paint.type === 'SOLID') {
     const hex = `#${toHex(paint.color.r)}${toHex(paint.color.g)}${toHex(paint.color.b)}`;
     const alpha = paint.opacity ?? 1;
-    return alpha < 1 ? `${hex}/${Math.round(alpha * 100)}` : hex;
+    return `${alpha < 1 ? `${hex}/${Math.round(alpha * 100)}` : hex}!`;
   }
   if (paint.type.startsWith('GRADIENT_')) {
     return 'grad';
@@ -860,7 +1058,10 @@ function paintFallback(paint: Paint): string {
   return paint.type.toLowerCase();
 }
 
-// Paint priority (spec §2.3): variable > paint style > hex. figma.mixed becomes "mixed".
+// Paint priority (spec §2.3): variable "$name" > paint style "@style:<name>" > raw value (hex with "!").
+// figma.mixed becomes "mixed".
+// Resolves open question 3 of PLUGIN_COMPACT_DUMP_SPEC.md §9: the marker is "!" after a raw hex,
+// and paint styles are written as "@style:<name>" (effect styles keep "@<name>").
 async function describePaints(value: unknown, styleId: string | undefined): Promise<string | undefined> {
   if (value === figma.mixed) {
     return 'mixed';
@@ -883,7 +1084,7 @@ async function describePaints(value: unknown, styleId: string | undefined): Prom
     } else if (style !== null) {
       // A paint style covers all of the node's paints, so it is written once.
       if (!styleUsed) {
-        parts.push(`@${style}`);
+        parts.push(`@style:${style}`);
         styleUsed = true;
       }
     } else {
@@ -1183,22 +1384,23 @@ async function readNode(node: SceneNode, state: CollectState): Promise<RawNode> 
   return raw;
 }
 
-// Reads nodes in chunks of DETAIL_BATCH. Returns undefined when a cut happens (not forced).
-async function readBatch(nodes: readonly SceneNode[], state: CollectState, forced: boolean): Promise<RawNode[] | undefined> {
+// Reads nodes in chunks of DETAIL_BATCH, stopping at the first chunk that exceeds this root's
+// share. Returns the prefix that was read; state.stopped says why it stopped (forced reads never stop).
+async function readBatch(nodes: readonly SceneNode[], state: CollectState, forced: boolean): Promise<RawNode[]> {
   const out: RawNode[] = [];
   for (let start = 0; start < nodes.length; start += DETAIL_BATCH) {
     const chunk = nodes.slice(start, start + DETAIL_BATCH);
     if (!forced) {
       if (state.stopped !== undefined) {
-        return undefined;
+        break;
       }
-      if (Date.now() - state.startedAt > DETAIL_TIMEBOX_MS) {
+      if (Date.now() > state.deadline) {
         state.stopped = 'timeout';
-        return undefined;
+        break;
       }
       if (state.visited + chunk.length > state.visitCap) {
         state.stopped = 'visitCap';
-        return undefined;
+        break;
       }
     }
     state.visited += chunk.length;
@@ -1207,23 +1409,23 @@ async function readBatch(nodes: readonly SceneNode[], state: CollectState, force
   return out;
 }
 
-// BFS over the selection roots (at most COMPACT_MAX_ROOTS are read; the rest only count).
-async function collectTree(roots: readonly SceneNode[], state: CollectState, depthLimit: number): Promise<RawNode[]> {
-  const shown = roots.filter((node) => isDetailShown(node, state.include));
-  const kept = shown.slice(0, COMPACT_MAX_ROOTS);
-  const rest: RawNode[] = shown.slice(COMPACT_MAX_ROOTS).map((node) => ({
-    id: node.id,
-    name: node.name,
-    type: node.type,
-    visible: node.visible,
-  }));
-  const keptRaw = (await readBatch(kept, state, true)) ?? [];
-  let current: Expansion[] = keptRaw.map((raw, i) => ({ raw, node: kept[i], depth: 0 }));
+// BFS over one selection root. Without expandInstances an instance lists its content for
+// INSTANCE_LIST_DEPTH levels (ignoring depthLimit); its last level only gets a `below` count.
+// A read cut short keeps its prefix and sets `cut` on the node, so the compactor can say how
+// many children are missing and why.
+async function collectRoot(root: SceneNode, state: CollectState, depthLimit: number): Promise<RawNode> {
+  const [top] = await readBatch([root], state, true);
+  let current: Expansion[] = [{ raw: top, node: root, depth: 0, listLevel: 0 }];
   while (current.length > 0) {
     const next: Expansion[] = [];
     for (const task of current) {
-      // Instances never expand their children (spec §2.4 rule 3).
-      if (task.depth >= depthLimit || task.node.type === 'INSTANCE') {
+      const inListing = task.listLevel > 0;
+      if (inListing && task.listLevel >= INSTANCE_LIST_DEPTH) {
+        task.raw.below = belowOf(task.node, state.include, state.below);
+        continue;
+      }
+      const listsChildren = task.node.type === 'INSTANCE' && !state.expandInstances;
+      if (task.depth >= depthLimit && !inListing && !listsChildren) {
         continue;
       }
       const children = childNodesOf(task.node, state.include);
@@ -1231,34 +1433,94 @@ async function collectTree(roots: readonly SceneNode[], state: CollectState, dep
         continue;
       }
       const read = await readBatch(children, state, false);
-      if (read === undefined) {
-        continue; // stays unexpanded; its count is in `childCount`
-      }
       task.raw.children = read;
-      read.forEach((raw, i) => next.push({ raw, node: children[i], depth: task.depth + 1 }));
+      if (read.length < children.length && state.stopped !== undefined) {
+        task.raw.cut = state.stopped;
+      }
+      const childLevel = inListing ? task.listLevel + 1 : listsChildren ? 1 : 0;
+      read.forEach((raw, i) => next.push({ raw, node: children[i], depth: task.depth + 1, listLevel: childLevel }));
     }
     current = next;
   }
-  return [...keptRaw, ...rest];
+  return top;
 }
 
-// Builds the detail payload for the current selection (roots). Tier B when the captured tree
-// fits 300 nodes, else tier A. A cut by the time box or the visit cap is a root marker.
-async function buildDetail(roots: readonly SceneNode[]): Promise<DetailPayload> {
+// Root-level summary of the roots that were not fully expanded, e.g. "…cut roots: 59:490 (timeout), 59:500 (budget)".
+// The reasons are read back from the node markers the compactor wrote (spec §3 markers).
+const CUT_MARKER = /\((budget|timeout|visitCap)\)$/;
+
+function collectCutReasons(rec: CompactRecord, reasons: Set<string>): void {
+  for (const entry of rec.ch ?? []) {
+    if (typeof entry === 'string') {
+      const match = CUT_MARKER.exec(entry);
+      if (match !== null) {
+        reasons.add(match[1]);
+      }
+    } else if (!isCompactGroup(entry)) {
+      collectCutReasons(entry, reasons);
+    }
+  }
+}
+
+function cutRootsSummary(entries: readonly CompactEntry[]): string | undefined {
+  const parts: string[] = [];
+  for (const entry of entries) {
+    if (typeof entry === 'string' || isCompactGroup(entry)) {
+      continue;
+    }
+    const reasons = new Set<string>();
+    collectCutReasons(entry, reasons);
+    if (reasons.size > 0) {
+      parts.push(`${entry.id ?? '?'} (${[...reasons].join(',')})`);
+    }
+  }
+  return parts.length > 0 ? `…cut roots: ${parts.join(', ')}` : undefined;
+}
+
+// Builds the detail payload for the current selection (roots). Node budget (maxNodes × 4 visits)
+// and the 150 ms time box are split per root: each root gets 1/left of what remains, where left is
+// the number of roots not yet read, so unused shares roll over. Tier B when the captured tree fits
+// 300 nodes, else tier A. Every cut is marked on its node; a root summary lists the cut roots.
+async function buildDetail(roots: readonly SceneNode[], expandInstances: boolean): Promise<DetailPayload> {
   const startedAt = Date.now();
-  const state: CollectState = {
-    startedAt,
-    visitCap: DETAIL_TIER_B.maxNodes * DETAIL_VISIT_CAP_FACTOR,
-    visited: 0,
-    include: DETAIL_TIER_B.include,
-  };
-  const raws = await collectTree(roots, state, DETAIL_TIER_B.depth);
-  const isTierB = state.visited <= DETAIL_TIER_B_NODES;
+  const include = DETAIL_TIER_B.include;
+  const shown = roots.filter((node) => isDetailShown(node, include));
+  const kept = shown.slice(0, COMPACT_MAX_ROOTS);
+  // Roots beyond the limit are not read; they are only counted by the compactor.
+  const rest: RawNode[] = shown.slice(COMPACT_MAX_ROOTS).map((node) => ({
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    visible: node.visible,
+  }));
+  let visitPool = DETAIL_TIER_B.maxNodes * DETAIL_VISIT_CAP_FACTOR;
+  let timePool = DETAIL_TIMEBOX_MS;
+  let visited = 0;
+  const raws: RawNode[] = [];
+  for (let i = 0; i < kept.length; i++) {
+    const left = kept.length - i;
+    const began = Date.now();
+    const deadline = began + Math.max(0, timePool) / left;
+    const state: CollectState = {
+      deadline,
+      visitCap: Math.max(0, Math.floor(visitPool / left)),
+      visited: 0,
+      include,
+      expandInstances,
+      below: { left: BELOW_VISIT_CAP, sinceCheck: 0, deadline },
+    };
+    raws.push(await collectRoot(kept[i], state, DETAIL_TIER_B.depth));
+    visitPool -= state.visited;
+    timePool -= Date.now() - began;
+    visited += state.visited;
+  }
+  const isTierB = visited <= DETAIL_TIER_B_NODES;
   const tier = isTierB ? DETAIL_TIER_B : DETAIL_TIER_A;
-  const result = compactTree(raws, tier);
+  const result = compactTree([...raws, ...rest], { ...tier, expandInstances });
   const entries: CompactEntry[] = result.roots.slice();
-  if (state.stopped !== undefined) {
-    entries.push(`…${state.stopped}`);
+  const summary = cutRootsSummary(result.roots);
+  if (summary !== undefined) {
+    entries.push(summary);
   }
   return {
     v: 1,
@@ -1268,7 +1530,7 @@ async function buildDetail(roots: readonly SceneNode[]): Promise<DetailPayload> 
     maxTextChars: tier.maxTextChars,
     include: tier.include.slice(),
     roots: entries,
-    truncated: result.truncated || state.stopped !== undefined,
+    truncated: result.truncated,
     buildMs: Date.now() - startedAt,
   };
 }
@@ -1283,14 +1545,14 @@ function postDetailError(requestId: number, message: string): void {
 }
 
 // Answers request-detail only (never on selectionchange). Never throws.
-async function handleRequestDetail(requestId: number): Promise<void> {
+async function handleRequestDetail(requestId: number, expandInstances: boolean): Promise<void> {
   try {
     const roots = [...figma.currentPage.selection];
     if (roots.length === 0) {
       postDetailError(requestId, 'Нічого не вибрано');
       return;
     }
-    const detail = await buildDetail(roots);
+    const detail = await buildDetail(roots, expandInstances);
     const message: DetailMessage = {
       type: 'detail',
       requestId,
@@ -1341,7 +1603,11 @@ async function saveSettings(settings: Settings): Promise<void> {
 // selection the UI sees always comes after the settings it depends on.
 let ready = false;
 
-figma.showUI(__html__, { width: 320, height: 520 });
+const UI_WIDTH = 320;
+const UI_HEIGHT = 520;
+const UI_COLLAPSED_HEIGHT = 56;
+
+figma.showUI(__html__, { width: UI_WIDTH, height: UI_HEIGHT });
 
 figma.ui.onmessage = (msg: unknown) => {
   if (!isUIMessage(msg)) {
@@ -1358,7 +1624,10 @@ figma.ui.onmessage = (msg: unknown) => {
       void saveSettings(msg.settings);
       break;
     case 'request-detail':
-      void handleRequestDetail(msg.requestId);
+      void handleRequestDetail(msg.requestId, msg.expandInstances === true);
+      break;
+    case 'resize':
+      figma.ui.resize(UI_WIDTH, msg.collapsed ? UI_COLLAPSED_HEIGHT : UI_HEIGHT);
       break;
   }
 };

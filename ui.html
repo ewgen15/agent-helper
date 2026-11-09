@@ -54,7 +54,19 @@
   }
   .wrap { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 
-  .head { display: flex; justify-content: space-between; align-items: baseline; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .head-end { display: flex; align-items: center; gap: 8px; }
+  .content { display: flex; flex-direction: column; gap: 10px; }
+  .panel { display: flex; flex-direction: column; gap: 10px; }
+  /* Collapsed: only the header row stays visible (code.ts resizes the window to 56 px). */
+  body.collapsed .content { display: none; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+  .tab {
+    background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+    margin-bottom: -1px; padding: 6px 8px; color: var(--muted); cursor: pointer; font: inherit;
+  }
+  .tab:hover { color: var(--fg); }
+  .tab[aria-selected="true"] { color: var(--fg); font-weight: 600; border-bottom-color: var(--accent); }
   .head h1 { font-size: 12px; font-weight: 600; margin: 0; }
   .head .count { color: var(--muted); }
 
@@ -95,6 +107,8 @@
     padding: 6px 8px;
   }
   .check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .expand-check input { accent-color: var(--accent); }
+  .expand-check:has(input:disabled) { opacity: 0.4; cursor: default; }
 
   button.primary {
     background: var(--accent);
@@ -136,6 +150,38 @@
     resize: vertical;
   }
 
+  .records-head { display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+  .records-summary { margin-right: auto; color: var(--muted); }
+  .hint { color: var(--muted); }
+  .records-list { max-height: 160px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+  .records-empty { padding: 8px; color: var(--muted); text-align: center; }
+  .rec + .rec { border-top: 1px solid var(--border); }
+  .rec-row {
+    display: flex; flex-direction: column; gap: 2px; width: 100%;
+    padding: 6px 8px; background: none; border: none; text-align: left;
+    cursor: pointer; font: inherit; color: var(--fg);
+  }
+  .rec-row:hover { background: var(--hover); }
+  .rec-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .rec-time { flex: none; font-variant-numeric: tabular-nums; }
+  .rec-file { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .rec-count { flex: none; color: var(--muted); }
+  .rec-first { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  .badge { flex: none; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 10px; color: var(--muted); }
+  .rec-detail { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 8px; color: var(--muted); font-size: 11px; }
+  .rec.done { opacity: 0.5; }
+  .rec-actions { padding: 0 8px 6px; }
+  .rec-actions button { font-size: 11px; }
+  .rec-node { overflow-wrap: anywhere; }
+  .rec-label { margin-top: 4px; }
+  .rec-note { color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* "Поточне" row: muted label and a separator line below, so it reads apart from the saved records. */
+  .records-current { border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .rec-cur-line { padding: 6px 8px 0; color: var(--muted); overflow-wrap: anywhere; }
+  .rec-cur-label { color: var(--muted); font-style: italic; }
+  .records-current .rec-row { padding-top: 6px; }
+  .records-current .rec-detail { padding-top: 2px; }
+
   .status { min-height: 16px; }
   .status.ok { color: var(--ok); }
   .status.err { color: var(--err); }
@@ -149,9 +195,20 @@
 <div class="wrap">
   <div class="head">
     <h1>Виділені ноди</h1>
-    <span class="count">Вибрано: <span id="count">0</span></span>
+    <div class="head-end">
+      <span id="countWrap" class="count">Вибрано: <span id="count">0</span></span>
+      <span id="summary" class="count" hidden></span>
+      <button id="collapseBtn" class="secondary" type="button" aria-expanded="true" aria-controls="content">▾ Згорнути</button>
+    </div>
   </div>
 
+  <div id="content" class="content">
+    <div id="tablist" class="tabs" role="tablist" aria-label="Розділи">
+      <button id="tabSelection" class="tab" type="button" role="tab" aria-selected="true" aria-controls="panelSelection" tabindex="0">Виділення</button>
+      <button id="tabRecords" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panelRecords" tabindex="-1"><span id="recordsTabLabel">Записи</span></button>
+    </div>
+
+    <div id="panelSelection" class="panel" role="tabpanel" aria-labelledby="tabSelection">
   <div id="list" class="list"></div>
 
   <div class="field">
@@ -185,6 +242,10 @@
     <div id="health" class="health" role="status" aria-live="polite" hidden></div>
 
     <div class="detail-actions">
+      <label class="check expand-check" title="Показати вміст інстансів (більше токенів)">
+        <input type="checkbox" id="expandInstances" aria-label="Розгортати інстанси: показати вміст інстансів (більше токенів)" disabled>
+        <span>Розгортати інстанси</span>
+      </label>
       <button id="detailBtn" class="primary" type="button" disabled aria-label="Додати деталі виділення до Claude">Додати деталі</button>
       <button id="commentToggle" class="secondary" type="button" disabled aria-expanded="false" aria-controls="commentBox">Додати деталі з коментарем</button>
     </div>
@@ -198,6 +259,20 @@
     </div>
 
     <div id="sendStatus" class="status" role="status" aria-live="polite"></div>
+
+  </div>
+    </div>
+
+    <div id="panelRecords" class="panel" role="tabpanel" aria-labelledby="tabRecords" hidden>
+      <div class="records-head">
+        <span id="recordsSummary" class="records-summary"></span>
+        <button id="recordsRefresh" class="secondary" type="button" disabled aria-label="Оновити список записів на сервері">Оновити</button>
+      </div>
+      <div id="recordsHint" class="hint" hidden>Увімкніть надсилання й введіть токен</div>
+      <div id="recordsStatus" class="status" role="status" aria-live="polite"></div>
+      <div id="recordsCurrent" class="records-current" hidden></div>
+      <div id="recordsList" class="records-list"></div>
+    </div>
   </div>
 </div>
 
@@ -225,6 +300,7 @@
   var commentEl = document.getElementById('comment');
   var commentCountEl = document.getElementById('commentCount');
   var commentSendEl = document.getElementById('commentSend');
+  var expandEl = document.getElementById('expandInstances');
 
   // Detail collection: the plugin builds the Compact Dump on click. The comment is kept in memory only.
   var COMMENT_MAX = 2000;
@@ -252,6 +328,370 @@
     noToken: { text: '● Сервер працює, введіть токен', kind: 'warn' },
     down: { text: '● Сервер не запущений', kind: 'err' }
   };
+
+  // ---- Records on the server (GET /records): the Записи tab with the list of the last selections ----
+
+  var tablistEl = document.getElementById('tablist');
+  var tabSelectionEl = document.getElementById('tabSelection');
+  var tabRecordsEl = document.getElementById('tabRecords');
+  var recordsTabLabelEl = document.getElementById('recordsTabLabel');
+  var panelSelectionEl = document.getElementById('panelSelection');
+  var panelRecordsEl = document.getElementById('panelRecords');
+  var recordsRefreshEl = document.getElementById('recordsRefresh');
+  var recordsHintEl = document.getElementById('recordsHint');
+  var recordsStatusEl = document.getElementById('recordsStatus');
+  var recordsListEl = document.getElementById('recordsList');
+  var recordsCurrentEl = document.getElementById('recordsCurrent');
+  var recordsSummaryEl = document.getElementById('recordsSummary');
+
+  var RECORDS_URL = 'http://localhost:3846/records';
+  var RECORDS_TIMEOUT_MS = 2000;
+  var RECORDS_DEBOUNCE_MS = 400;
+  var recordsTabOpen = false; // session only, never persisted: true while the Записи tab is selected
+  var recordsData = null; // last successful list, newest first; null until the first load
+  var recordsCurrent = null; // last "current" from GET /records (null: nothing has arrived yet, or the server sent null)
+  var recordsCurrentExpanded = false; // session only
+  var recordsExpanded = {}; // session only: record id -> expanded
+  var recordsSeq = 0;
+  var recordsDebounce = null;
+  var RECORD_STATUS_TIMEOUT_MS = 2000;
+  var recordStatusPending = {}; // session only: record id -> true while its status POST is in flight
+
+  function recordsActive() {
+    return sendEl.checked && tokenEl.value.trim() !== '';
+  }
+
+  function setRecordsStatus(text, kind) {
+    recordsStatusEl.textContent = text;
+    recordsStatusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function makeEl(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function textOf(v) {
+    return v === undefined || v === null ? '' : String(v);
+  }
+
+  function pad2(n) {
+    return n < 10 ? '0' + n : String(n);
+  }
+
+  function formatTime(value) {
+    var d = typeof value === 'string' ? new Date(value) : null;
+    if (!d || isNaN(d.getTime())) return '--:--:--';
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+  }
+
+  function fileLabel(fileKey) {
+    return typeof fileKey === 'string' && fileKey ? fileKey.slice(0, 6) + '…' : 'файл невідомий';
+  }
+
+  // Ukrainian plural of "вузол": 1, 21 -> вузол; 2-4, 22-24 -> вузли; everything else, 11-14 included -> вузлів.
+  function nodesWord(n) {
+    var mod10 = n % 10;
+    var mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return 'вузол';
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'вузли';
+    return 'вузлів';
+  }
+
+  function nodeName(n) {
+    return typeof n.name === 'string' && n.name ? n.name : '(без назви)';
+  }
+
+  // The tab label, the refresh button and the hint/list visibility follow the send settings.
+  function updateRecordsUi() {
+    var active = recordsActive();
+    // The count is known only after a successful load; before that the tab shows just "Записи".
+    // Only records with status "new" are counted; the header gives "N нових з M" (M = all saved records).
+    var newCount = recordsData ? recordsData.filter(function (r) { return r.status === 'new'; }).length : 0;
+    recordsTabLabelEl.textContent = recordsData ? 'Записи (' + newCount + ')' : 'Записи';
+    recordsSummaryEl.textContent = recordsData ? newCount + ' нових з ' + recordsData.length : '';
+    recordsRefreshEl.disabled = !active;
+    recordsHintEl.hidden = active;
+    recordsListEl.hidden = !active;
+    recordsCurrentEl.hidden = !active || !recordsData;
+  }
+
+  function nodeLine(n) {
+    return textOf(n.id) + ' · ' + nodeName(n) + ' · ' + textOf(n.type);
+  }
+
+  // The "Поточне" row above the saved records. It is not a record and is not counted in the header.
+  // null: nothing has arrived. empty: the current selection is empty. Otherwise a toggle shows the nodes.
+  function renderCurrent() {
+    var cur = recordsCurrent;
+    recordsCurrentEl.textContent = '';
+    if (!cur) {
+      var none = makeEl('div', 'rec-cur-line');
+      none.appendChild(makeEl('span', 'rec-cur-label', 'Поточне'));
+      none.appendChild(makeEl('span', 'rec-cur-text', ': ще не надходило'));
+      recordsCurrentEl.appendChild(none);
+      return;
+    }
+    if (cur.empty === true) {
+      var empty = makeEl('div', 'rec-cur-line');
+      empty.appendChild(makeEl('span', 'rec-cur-label', 'Поточне'));
+      empty.appendChild(makeEl('span', 'rec-cur-text', ': порожнє'));
+      recordsCurrentEl.appendChild(empty);
+      return;
+    }
+    var nodes = Array.isArray(cur.nodes) ? cur.nodes.filter(function (n) { return n && typeof n === 'object'; }) : [];
+    var count = typeof cur.nodeCount === 'number' ? cur.nodeCount : nodes.length;
+    var expanded = recordsCurrentExpanded;
+
+    var toggle = makeEl('button', 'rec-row');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', String(expanded));
+    var line = makeEl('span', 'rec-line');
+    line.appendChild(makeEl('span', 'rec-cur-label', 'Поточне'));
+    var text = ': ' + formatTime(cur.receivedAt) + ' · ' + fileLabel(cur.fileKey) + ' · ' + count + ' ' + nodesWord(count);
+    if (nodes.length) text += ' · ' + nodeName(nodes[0]);
+    line.appendChild(makeEl('span', 'rec-first', text));
+    toggle.appendChild(line);
+
+    var detail = makeEl('div', 'rec-detail');
+    detail.hidden = !expanded;
+    nodes.forEach(function (n) {
+      detail.appendChild(makeEl('div', 'rec-node', nodeLine(n)));
+    });
+
+    toggle.addEventListener('click', function () {
+      recordsCurrentExpanded = !recordsCurrentExpanded;
+      toggle.setAttribute('aria-expanded', String(recordsCurrentExpanded));
+      detail.hidden = !recordsCurrentExpanded;
+    });
+
+    recordsCurrentEl.appendChild(toggle);
+    recordsCurrentEl.appendChild(detail);
+  }
+
+  // One row: a button that toggles the details, and a hidden block with the nodes and the note.
+  function buildRecordRow(r) {
+    var key = textOf(r.id);
+    var nodes = Array.isArray(r.nodes) ? r.nodes.filter(function (n) { return n && typeof n === 'object'; }) : [];
+    var count = typeof r.nodeCount === 'number' ? r.nodeCount : nodes.length;
+    var note = typeof r.note === 'string' ? r.note : '';
+    var expanded = recordsExpanded[key] === true;
+    var done = r.status === 'done';
+
+    var row = makeEl('div', done ? 'rec done' : 'rec');
+    var toggle = makeEl('button', 'rec-row');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', String(expanded));
+
+    var top = makeEl('span', 'rec-line');
+    top.appendChild(makeEl('span', 'rec-time', formatTime(r.receivedAt)));
+    top.appendChild(makeEl('span', 'rec-file', fileLabel(r.fileKey)));
+
+    var sub = makeEl('span', 'rec-line');
+    sub.appendChild(makeEl('span', 'badge', done ? 'виконано' : 'нове'));
+    sub.appendChild(makeEl('span', 'rec-count', count + ' ' + nodesWord(count)));
+    if (nodes.length) sub.appendChild(makeEl('span', 'rec-first', nodeName(nodes[0])));
+    if (r.hasDetail === true) sub.appendChild(makeEl('span', 'badge', 'деталі'));
+    if (note || (typeof r.noteLength === 'number' && r.noteLength > 0)) {
+      sub.appendChild(makeEl('span', 'badge', 'нотатка'));
+    }
+
+    toggle.appendChild(top);
+    toggle.appendChild(sub);
+
+    var detail = makeEl('div', 'rec-detail');
+    detail.hidden = !expanded;
+    nodes.forEach(function (n) {
+      detail.appendChild(makeEl('div', 'rec-node', nodeLine(n)));
+    });
+    if (note) {
+      detail.appendChild(makeEl('div', 'rec-label', 'Нотатка користувача:'));
+      detail.appendChild(makeEl('div', 'rec-note', note));
+    }
+
+    toggle.addEventListener('click', function () {
+      var open = recordsExpanded[key] !== true;
+      recordsExpanded[key] = open;
+      toggle.setAttribute('aria-expanded', String(open));
+      detail.hidden = !open;
+    });
+
+    var actions = makeEl('div', 'rec-actions');
+    var statusBtn = makeEl('button', 'secondary', done ? 'Повернути в нові' : 'Позначити виконаним');
+    statusBtn.type = 'button';
+    statusBtn.disabled = recordStatusPending[key] === true;
+    statusBtn.addEventListener('click', function () {
+      setRecordStatus(r.id, done ? 'new' : 'done');
+    });
+    actions.appendChild(statusBtn);
+
+    row.appendChild(toggle);
+    row.appendChild(actions);
+    row.appendChild(detail);
+    return row;
+  }
+
+  function renderRecords() {
+    renderCurrent();
+    recordsListEl.textContent = '';
+    if (!recordsData) return;
+    if (!recordsData.length) {
+      recordsListEl.appendChild(makeEl('div', 'records-empty', 'Записів ще немає'));
+      return;
+    }
+    recordsData.forEach(function (r) {
+      recordsListEl.appendChild(buildRecordRow(r));
+    });
+  }
+
+  // GETs /records with x-token. Never rejects; a failure only sets the section's status line.
+  // A response that is superseded (or arrives after the settings were turned off) is ignored.
+  function refreshRecords() {
+    if (!recordsActive()) {
+      updateRecordsUi();
+      return Promise.resolve(false);
+    }
+    var token = tokenEl.value.trim();
+    var seq = ++recordsSeq;
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (controller) controller.abort();
+    }, RECORDS_TIMEOUT_MS);
+    setRecordsStatus('Завантаження…', '');
+    return Promise.resolve()
+      .then(function () {
+        return fetch(RECORDS_URL, {
+          method: 'GET',
+          headers: { 'x-token': token },
+          signal: controller ? controller.signal : undefined
+        });
+      })
+      .then(function (res) {
+        if (res && res.status === 401) return { error: 'Невірний токен' };
+        if (!res || !res.ok) return { error: 'Помилка читання записів' };
+        return res.json().then(function (body) {
+          if (!body || body.ok !== true || !Array.isArray(body.records)) return { error: 'Помилка читання записів' };
+          var current = body.current && typeof body.current === 'object' ? body.current : null;
+          return { records: body.records, current: current };
+        });
+      }, function () {
+        return { error: 'Сервер не запущений' };
+      })
+      .catch(function () {
+        return { error: 'Помилка читання записів' };
+      })
+      .then(function (result) {
+        clearTimeout(timer);
+        if (seq !== recordsSeq || !recordsActive()) return false;
+        if (result.error) {
+          setRecordsStatus(result.error, 'err');
+          return false;
+        }
+        recordsData = result.records;
+        recordsCurrent = result.current;
+        setRecordsStatus('', '');
+        renderRecords();
+        updateRecordsUi();
+        return true;
+      });
+  }
+
+  // POSTs the new status of one saved record. On success the list is fetched again (so the count and the badge follow);
+  // on failure only the section's status line says why. Never rejects.
+  function setRecordStatus(id, status) {
+    if (!recordsActive()) return Promise.resolve(false);
+    var key = String(id);
+    if (recordStatusPending[key] === true) return Promise.resolve(false);
+    var token = tokenEl.value.trim();
+    recordStatusPending[key] = true;
+    renderRecords(); // disables this record's button while the request is in flight
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (controller) controller.abort();
+    }, RECORD_STATUS_TIMEOUT_MS);
+    return Promise.resolve()
+      .then(function () {
+        return fetch(RECORDS_URL + '/' + encodeURIComponent(key) + '/status', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-token': token },
+          body: JSON.stringify({ status: status }),
+          signal: controller ? controller.signal : undefined
+        });
+      })
+      .then(function (res) {
+        if (res && res.status === 401) return 'Невірний токен';
+        if (res && res.status === 404) return 'Запис не знайдено';
+        if (res && res.status === 400) return 'Некоректний статус';
+        if (!res || !res.ok) return 'Помилка оновлення статусу';
+        return null;
+      }, function () {
+        return 'Сервер не запущений';
+      })
+      .catch(function () {
+        return 'Помилка оновлення статусу';
+      })
+      .then(function (error) {
+        clearTimeout(timer);
+        delete recordStatusPending[key];
+        if (!recordsActive()) return false; // sending was turned off meanwhile: the response is ignored
+        renderRecords();
+        if (error) {
+          setRecordsStatus(error, 'err');
+          return false;
+        }
+        refreshRecords();
+        return true;
+      });
+  }
+
+  function cancelRecordsRefresh() {
+    clearTimeout(recordsDebounce);
+    recordsDebounce = null;
+  }
+
+  // Typing a token refreshes once after a short pause, not on every key.
+  function scheduleRecordsRefresh() {
+    cancelRecordsRefresh();
+    recordsDebounce = setTimeout(function () {
+      recordsDebounce = null;
+      refreshRecords();
+    }, RECORDS_DEBOUNCE_MS);
+  }
+
+  // Turning sending off drops any list request in flight. Turning it on does not fetch by itself.
+  function recordsSendChanged() {
+    if (!recordsActive()) {
+      recordsSeq++; // drops any response still in flight
+      cancelRecordsRefresh();
+      setRecordsStatus('', '');
+    }
+    updateRecordsUi();
+  }
+
+  function recordsTokenChanged() {
+    if (!recordsActive()) {
+      recordsSendChanged();
+      return;
+    }
+    updateRecordsUi();
+    scheduleRecordsRefresh();
+  }
+
+  // Selects the "selection" or "records" tab. Opening the records tab fetches the list; re-selecting it does not.
+  function selectTab(name) {
+    var records = name === 'records';
+    var wasOpen = recordsTabOpen;
+    recordsTabOpen = records;
+    tabSelectionEl.setAttribute('aria-selected', String(!records));
+    tabSelectionEl.tabIndex = records ? -1 : 0;
+    tabRecordsEl.setAttribute('aria-selected', String(records));
+    tabRecordsEl.tabIndex = records ? 0 : -1;
+    panelSelectionEl.hidden = records;
+    panelRecordsEl.hidden = !records;
+    if (records && !wasOpen) refreshRecords();
+  }
 
   function buildText(format, fileKey, nodes) {
     if (format === 'idname') {
@@ -409,6 +849,7 @@
     tokenEl.value = settings.token;
     syncHealth();
     updateDetailUi();
+    refreshRecords(); // on start: loads the list when sending is on (does nothing when it is off)
   }
 
   // POSTs the selection to the local server. Never rejects; failures only set the status lines.
@@ -458,6 +899,9 @@
           if (result === 'unauthorized' && sendEl.checked) setHealth('badToken');
           if (result === 'network' && sendEl.checked) setHealth('down');
         }
+        // Only a successful detail POST can add or change a saved record, so only it refreshes the list.
+        // Plain selection POSTs change just "current" and leave the list alone. The count stays current off-tab too.
+        if (ok && 'detail' in opts) refreshRecords();
         return ok;
       });
   }
@@ -481,6 +925,7 @@
     detailBtn.disabled = !enabled;
     commentToggleEl.disabled = !enabled;
     commentSendEl.disabled = !enabled;
+    expandEl.disabled = !enabled;
     commentCountEl.textContent = commentEl.value.length + '/' + COMMENT_MAX;
   }
 
@@ -526,7 +971,9 @@
     }, DETAIL_TIMEOUT_MS);
     setSendStatus(DETAIL_WAIT_TEXT, '');
     updateDetailUi();
-    parent.postMessage({ pluginMessage: { type: 'request-detail', requestId: id } }, '*');
+    parent.postMessage({
+      pluginMessage: { type: 'request-detail', requestId: id, expandInstances: expandEl.checked === true }
+    }, '*');
   }
 
   // The plugin's detail reply. Only the reply to the current request for the current ids is sent.
@@ -569,6 +1016,29 @@
     });
   }
 
+  // Collapse: hides everything except the header row. Session only, never persisted.
+  var countWrapEl = document.getElementById('countWrap');
+  var summaryEl = document.getElementById('summary');
+  var collapseBtn = document.getElementById('collapseBtn');
+  var collapsed = false;
+
+  // While collapsed the header shows the node count as a short summary.
+  function renderHeader() {
+    var n = state.nodes.length;
+    countWrapEl.hidden = collapsed;
+    summaryEl.hidden = !collapsed;
+    summaryEl.textContent = n ? n + ' ' + nodesWord(n) : 'Нічого не вибрано';
+  }
+
+  function setCollapsed(next) {
+    collapsed = next;
+    document.body.className = collapsed ? 'collapsed' : '';
+    collapseBtn.textContent = collapsed ? '▸ Розгорнути' : '▾ Згорнути';
+    collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+    renderHeader();
+    parent.postMessage({ pluginMessage: { type: 'resize', collapsed: collapsed } }, '*');
+  }
+
   function render() {
     countEl.textContent = String(state.nodes.length);
     listEl.textContent = '';
@@ -593,6 +1063,7 @@
       });
     }
     copyBtn.disabled = !state.nodes.length;
+    renderHeader();
     updateDetailUi();
   }
 
@@ -657,11 +1128,38 @@
     syncHealth();
     if (!sendEl.checked) cancelDetail();
     updateDetailUi();
+    recordsSendChanged();
   });
   tokenEl.addEventListener('input', function () {
     saveSettings();
     scheduleHealthCheck();
     updateDetailUi();
+    recordsTokenChanged();
+  });
+
+  tabSelectionEl.addEventListener('click', function () {
+    selectTab('selection');
+  });
+  tabRecordsEl.addEventListener('click', function () {
+    selectTab('records');
+  });
+  // Arrow keys, Home and End move between the two tabs (the ARIA tabs pattern); Enter and Space come from the buttons.
+  tablistEl.addEventListener('keydown', function (e) {
+    var target = null;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') target = recordsTabOpen ? 'selection' : 'records';
+    else if (e.key === 'Home') target = 'selection';
+    else if (e.key === 'End') target = 'records';
+    if (!target) return;
+    e.preventDefault();
+    selectTab(target);
+    (target === 'records' ? tabRecordsEl : tabSelectionEl).focus();
+  });
+
+  collapseBtn.addEventListener('click', function () {
+    setCollapsed(!collapsed);
+  });
+  recordsRefreshEl.addEventListener('click', function () {
+    refreshRecords();
   });
 
   detailBtn.addEventListener('click', function () {
@@ -681,6 +1179,7 @@
 
   setCommentOpen(false);
   render();
+  updateRecordsUi();
 })();
 </script>
 </body>

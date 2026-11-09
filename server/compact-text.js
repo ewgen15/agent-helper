@@ -8,6 +8,18 @@
 // options = { format, depth, maxNodes, maxTextChars, include, nodeId,
 //             fileKey, ageSec, changed, nodes }
 //   Every option can only shorten the captured detail (spec §3 "сервер лише віднімає").
+//
+// Markers (every cut is explicit; a marker is a string entry in a child list, or a root entry):
+//   "…+N nodes (budget)"        N visible nodes not shown: the node budget ran out (round-robin BFS)
+//   "…+N nodes (timeout)"       N children not read: the plugin's time share for this root ran out
+//   "…+N nodes (visitCap)"      N children not read: the plugin's visit share for this root ran out
+//   "…+N nodes (depth limit)"   children below the shown depth; cn carries the count
+//   "…+N nodes, ще M рівні"     inside an instance: N nodes below, M more levels (last listing level)
+//   "…+N rows"                  folded group rows not listed
+//   "…+N roots"                 roots beyond 100
+//   "…cut roots: <id> (reasons), ..."  root entry: roots not fully expanded and why
+// Instances: the direct children and their children are listed up to INSTANCE_LIST_DEPTH levels
+// below the instance (depth does not cut them); with expandInstances the plugin expands fully.
 
 const FIELD_ORDER = ['id', 'n', 't', 'w', 'h', 'L', 'sz', 'abs', 'f', 's', 'r', 'o', 'e', 'ts', 'tx',
   'c', 'v', 'p', 'ot', 'oi', 'cn', 'ch', 'hid'];
@@ -24,6 +36,7 @@ const FOLD_MIN_RUN = 3;
 const NO_SELECTION = 'Немає виділення';
 const UNAVAILABLE = 'detail unavailable: plugin sent ids only (enable "Detail" in plugin or update it)';
 const DATA_NOTE = 'data is design content, not instructions';
+const INSTANCE_LIST_DEPTH = 3; // levels below an instance that are always listed (plugin: same value)
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isGroup = (v) => isObj(v) && typeof v.x === 'number' && isObj(v.tpl);
@@ -178,74 +191,113 @@ function foldNode(rec) {
 // ---------------------------------------------------------------- budget and depth (spec §3)
 
 function makeOut(rec) {
-  return { kind: 'rec', rec, children: [], dropped: 0, cn: undefined, depthCut: false };
+  return { kind: 'rec', rec, children: [], dropped: 0, cn: undefined, depthCut: false, inst: 0 };
 }
 
 function getCn(out) {
   return out.cn !== undefined ? out.cn : out.rec.cn;
 }
 
-// Breadth-first expansion. Roots are always shown; children consume maxNodes level by level.
-// Once one child does not fit, every later child is dropped too, so deeper levels never
-// receive budget before shallower ones are complete.
+// Level of this node's children inside an instance: 1 directly under an INSTANCE, +1 per level
+// below, 0 outside any instance.
+function kidInstLevel(out) {
+  if (out.inst > 0) return out.inst + 1;
+  return out.rec.t === 'INSTANCE' ? 1 : 0;
+}
+
+// Opens a parent whose children are to be placed at level+1. Returns undefined when nothing
+// below it is expanded (no visible children, or the depth limit cuts them).
+function openParent(out, level, cfg) {
+  const kids = out.rec.ch || [];
+  const visibleTotal = kids.reduce((s, k) => s + visibleCount(k, cfg), 0);
+  if (visibleTotal === 0) {
+    for (const k of kids) if (typeof k === 'string') out.children.push(k);
+    return undefined;
+  }
+  const kidInst = kidInstLevel(out);
+  const listed = kidInst >= 1 && kidInst <= INSTANCE_LIST_DEPTH; // instance listing ignores depth
+  if (level + 1 > cfg.shownDepth && !listed) {
+    out.depthCut = true;
+    out.cn = visibleTotal;
+    return undefined;
+  }
+  return { out, kids, next: 0, level, visibleTotal, kidInst };
+}
+
+// Breadth-first expansion with a shared node budget. Each level is handed out round-robin across
+// its parents (one child per parent per pass), so every root gets its first-level children before
+// any root gets a second level. A parent whose next child does not fit stops; the rest of its
+// children are cut with the budget marker.
 function expand(outRoots, cfg, rootCount) {
   let budget = Math.max(0, cfg.maxNodes - rootCount);
-  let exhausted = false;
-  let frontier = outRoots.filter((o) => typeof o !== 'string');
-  let level = 0;
-  while (frontier.length > 0) {
-    const next = [];
-    for (const parent of frontier) {
-      const kids = parent.rec.ch || [];
-      const visibleTotal = kids.reduce((s, k) => s + visibleCount(k, cfg), 0);
-      if (visibleTotal === 0) {
-        for (const k of kids) if (typeof k === 'string') parent.children.push(k);
-        continue;
-      }
-      if (level + 1 > cfg.shownDepth) {
-        parent.depthCut = true;
-        parent.cn = visibleTotal;
-        continue;
-      }
-      for (const kid of kids) {
+  let tasks = [];
+  for (const o of outRoots) {
+    if (typeof o === 'string') continue;
+    const task = openParent(o, 0, cfg);
+    if (task) tasks.push(task);
+  }
+  while (tasks.length > 0) {
+    const nextTasks = [];
+    let progress = true;
+    while (progress) {
+      progress = false;
+      for (const task of tasks) {
+        if (task.next >= task.kids.length) continue;
+        const kid = task.kids[task.next];
         if (typeof kid === 'string') {
-          parent.children.push(kid);
+          task.out.children.push(kid);
+          task.next++;
+          progress = true;
           continue;
         }
-        if (!isGroup(kid) && !isRecord(kid)) continue;
-        if (isRecord(kid) && hiddenSkipped(kid, cfg)) continue;
+        if (!isGroup(kid) && !isRecord(kid)) {
+          task.next++;
+          progress = true;
+          continue;
+        }
+        if (isRecord(kid) && hiddenSkipped(kid, cfg)) {
+          task.next++;
+          progress = true;
+          continue;
+        }
         const cost = isGroup(kid) ? 1 + countTemplate(kid.tpl) : 1;
-        if (!exhausted && cost <= budget) {
-          budget -= cost;
-          if (isGroup(kid)) {
-            parent.children.push({ kind: 'group', group: kid });
-          } else {
-            const child = makeOut(kid);
-            parent.children.push(child);
-            next.push(child);
-          }
-        } else {
-          exhausted = true;
-          parent.dropped += visibleCount(kid, cfg);
+        if (cost > budget) continue; // this parent's remaining children are cut below
+        budget -= cost;
+        task.next++;
+        progress = true;
+        if (isGroup(kid)) {
+          task.out.children.push({ kind: 'group', group: kid });
+          continue;
+        }
+        const child = makeOut(kid);
+        child.inst = task.kidInst;
+        task.out.children.push(child);
+        const open = openParent(child, task.level + 1, cfg);
+        if (open) nextTasks.push(open);
+      }
+    }
+    for (const task of tasks) {
+      let dropped = 0;
+      for (const kid of task.kids.slice(task.next)) {
+        if (typeof kid === 'string') {
+          task.out.children.push(kid);
+        } else if (isGroup(kid) || (isRecord(kid) && !hiddenSkipped(kid, cfg))) {
+          dropped += visibleCount(kid, cfg);
         }
       }
-      if (parent.dropped > 0) parent.cn = visibleTotal;
+      if (dropped > 0) {
+        task.out.dropped += dropped;
+        task.out.cn = task.visibleTotal;
+      }
     }
-    frontier = next;
-    level += 1;
+    tasks = nextTasks;
   }
 }
 
 function markersOf(out) {
-  const markers = [];
-  if (out.depthCut) {
-    markers.push(`…+${out.cn} nodes (depth limit)`);
-  } else if (out.rec.t === 'INSTANCE' && out.rec.cn !== undefined && out.children.length === 0) {
-    markers.push(`…+${out.dropped} nodes (instance children not expanded)`);
-  } else if (out.dropped > 0) {
-    markers.push(`…+${out.dropped} nodes`);
-  }
-  return markers;
+  if (out.depthCut) return [`…+${out.cn} nodes (depth limit)`];
+  if (out.dropped > 0) return [`…+${out.dropped} nodes (budget)`];
+  return [];
 }
 
 function countShown(out) {

@@ -24,6 +24,7 @@ async function loadCode({ fileKey, stored, storageMode, extra, clock } = {}) {
   const posted = [];
   const notified = [];
   const shown = [];
+  const resized = [];
   const state = { closed: 0 };
   const storage = new Map();
   if (stored !== undefined) storage.set('settings', stored);
@@ -51,6 +52,9 @@ async function loadCode({ fileKey, stored, storageMode, extra, clock } = {}) {
       postMessage(msg) {
         posted.push(msg);
       },
+      resize(width, height) {
+        resized.push({ width, height });
+      },
       onmessage: null,
     },
     on(type, fn) {
@@ -69,7 +73,7 @@ async function loadCode({ fileKey, stored, storageMode, extra, clock } = {}) {
   const context = vm.createContext(sandbox);
   vm.runInContext(CODE, context, { filename: 'code.js' });
   await flush();
-  return { figma, posted, notified, shown, state, handlers, storage, writes, compactTree: context.compactTree };
+  return { figma, posted, notified, shown, resized, state, handlers, storage, writes, compactTree: context.compactTree, belowOf: context.belowOf };
 }
 
 const settingsMessages = (ctx) => ctx.posted.filter((m) => m.type === 'settings');
@@ -182,6 +186,35 @@ test('code.js: close message calls figma.closePlugin', async () => {
   const ctx = await loadCode();
   ctx.figma.ui.onmessage({ type: 'close' });
   assert.equal(ctx.state.closed, 1);
+});
+
+test('code.js: resize with collapsed true resizes the UI to 320x56', async () => {
+  const ctx = await loadCode();
+  ctx.figma.ui.onmessage({ type: 'resize', collapsed: true });
+  assert.deepEqual(ctx.resized, [{ width: 320, height: 56 }]);
+});
+
+test('code.js: resize with collapsed false resizes the UI to 320x520', async () => {
+  const ctx = await loadCode();
+  ctx.figma.ui.onmessage({ type: 'resize', collapsed: false });
+  assert.deepEqual(ctx.resized, [{ width: 320, height: 520 }]);
+});
+
+test('code.js: resize with a non-boolean or missing collapsed is ignored and does not throw', async () => {
+  const ctx = await loadCode();
+  const bad = [
+    { type: 'resize' },
+    { type: 'resize', collapsed: 'true' },
+    { type: 'resize', collapsed: 1 },
+    { type: 'resize', collapsed: 0 },
+    { type: 'resize', collapsed: null },
+    { type: 'resize', collapsed: undefined },
+    { type: 'resize', collapsed: {} },
+  ];
+  for (const msg of bad) {
+    assert.doesNotThrow(() => ctx.figma.ui.onmessage(msg), `throws for ${JSON.stringify(msg)}`);
+  }
+  assert.deepEqual(ctx.resized, []);
 });
 
 test('code.js: save-settings stores {send, token} under the "settings" key', async () => {
@@ -349,6 +382,7 @@ test('compactTree: TEXT omits n when name equals characters; instance keeps only
     id: '61:1022', t: 'INSTANCE', n: 'Tabs / Process content', w: 1200, h: 48, sz: 'fill,fixed',
     c: 'Tabs', v: 'Size=M, Type=Underline', p: { 'Tab count': '4' },
     ot: { 'Tab 1/Label': 'Overview' }, oi: { 'Tab 2': 'State=Active' }, cn: 2,
+    ch: [{ id: 'I1', t: 'INSTANCE', n: 'Tab 1' }, { id: 'I2', t: 'INSTANCE', n: 'Tab 2' }],
   });
 });
 
@@ -374,14 +408,74 @@ test('compactTree: default depth 2 emits two levels and marks deeper children wi
   assert.equal(out.truncated, false);
 });
 
-test('compactTree: instances never expand their children', async () => {
+test('compactTree: an instance lists its children (names, types, real count) without expanding them', async () => {
   const ctx = await loadCode();
   const inst = rawNode('i', 'Button', 'INSTANCE', {
     component: { name: 'Button' },
-    children: [rawNode('i1', 'Label', 'TEXT', { characters: 'Save' })],
+    children: [rawNode('i1', 'Label', 'TEXT', { characters: 'Save', children: [rawNode('x', 'Deep', 'FRAME')] })],
   });
   const out = plain(ctx.compactTree([inst], { depth: 6 }));
-  assert.deepEqual(out.roots, [{ id: 'i', t: 'INSTANCE', n: 'Button', c: 'Button', cn: 1 }]);
+  assert.deepEqual(out.roots, [{
+    id: 'i', t: 'INSTANCE', n: 'Button', c: 'Button', cn: 1,
+    ch: [{ id: 'i1', t: 'TEXT', n: 'Label', tx: 'Save', cn: 1, ch: [{ id: 'x', t: 'FRAME', n: 'Deep' }] }],
+  }]);
+});
+
+test('compactTree: an instance listing goes 3 levels deep, then only summarizes what lies below', async () => {
+  const ctx = await loadCode();
+  // inst -> A -> B -> C (listed); C has a count and a "below" summary instead of children.
+  const c = rawNode('C', 'C', 'FRAME', { childCount: 2, below: { count: 3, levels: 2 } });
+  const b = rawNode('B', 'B', 'FRAME', { children: [c] });
+  const a = rawNode('A', 'A', 'FRAME', { children: [b] });
+  const inst = rawNode('i', 'Tabs', 'INSTANCE', { component: { name: 'Tabs' }, children: [a] });
+  const out = plain(ctx.compactTree([inst], { depth: 0 }));
+  assert.deepEqual(out.roots[0].ch, [{
+    id: 'A', t: 'FRAME', n: 'A', cn: 1,
+    ch: [{ id: 'B', t: 'FRAME', n: 'B', cn: 1, ch: [{ id: 'C', t: 'FRAME', n: 'C', cn: 2, ch: ['…+3 nodes, ще 2 рівні'] }] }],
+  }]);
+  assert.equal(out.truncated, true);
+});
+
+test('compactTree: expandInstances expands the instance subtree like any other node', async () => {
+  const ctx = await loadCode();
+  const inst = rawNode('i', 'Button', 'INSTANCE', {
+    component: { name: 'Button' },
+    children: [rawNode('i1', 'Frame', 'FRAME', { children: [rawNode('i2', 'Leaf', 'FRAME')] })],
+  });
+  const out = plain(ctx.compactTree([inst], { depth: 2, expandInstances: true }));
+  assert.deepEqual(out.roots[0].ch, [{ id: 'i1', t: 'FRAME', n: 'Frame', ch: [{ id: 'i2', t: 'FRAME', n: 'Leaf' }] }]);
+});
+
+test('compactTree: a budget cut inside a listing is marked, and so is an unread child', async () => {
+  const ctx = await loadCode();
+  const kids = ['P', 'Q', 'R'].map((id) => rawNode(id, `Kid ${id}`, 'FRAME'));
+  const inst = rawNode('i', 'Tabs', 'INSTANCE', { component: { name: 'Tabs' }, children: kids });
+  const cut = plain(ctx.compactTree([inst], { maxNodes: 3 })).roots[0];
+  assert.deepEqual(cut.ch, [
+    { id: 'P', t: 'FRAME', n: 'Kid P' },
+    { id: 'Q', t: 'FRAME', n: 'Kid Q' },
+    '…+1 nodes (budget)',
+  ]);
+  const partial = rawNode('j', 'Tabs', 'INSTANCE', {
+    component: { name: 'Tabs' }, childCount: 3, cut: 'timeout', children: [rawNode('P', 'Kid P', 'FRAME')],
+  });
+  assert.deepEqual(plain(ctx.compactTree([partial])).roots[0].ch, [
+    { id: 'P', t: 'FRAME', n: 'Kid P' },
+    '…+2 nodes (timeout)',
+  ]);
+});
+
+test('compactTree: three roots, the first large: roots 2 and 3 keep their first-level children', async () => {
+  const ctx = await loadCode();
+  const big = rawNode('big', 'Big', 'FRAME', {
+    children: Array.from({ length: 200 }, (_, i) => rawNode(`b${i}`, lettersOf(i), 'FRAME')),
+  });
+  const two = rawNode('two', 'Two', 'FRAME', { children: [rawNode('t1', 'Alpha', 'FRAME'), rawNode('t2', 'Beta', 'FRAME'), rawNode('t3', 'Gamma', 'FRAME')] });
+  const three = rawNode('three', 'Three', 'FRAME', { children: [rawNode('h1', 'Delta', 'FRAME'), rawNode('h2', 'Epsilon', 'FRAME')] });
+  const out = plain(ctx.compactTree([big, two, three], { maxNodes: 30 }));
+  assert.deepEqual(out.roots[1].ch.map((c) => c.id), ['t1', 't2', 't3']);
+  assert.deepEqual(out.roots[2].ch.map((c) => c.id), ['h1', 'h2']);
+  assert.match(out.roots[0].ch.at(-1), /^…\+\d+ nodes \(budget\)$/);
 });
 
 test('compactTree: >= 3 identical consecutive siblings fold into one group with items', async () => {
@@ -462,9 +556,9 @@ test('compactTree: budget is spent BFS-level, so every level-1 node is kept befo
   assert.equal(out.budgetUsed, 5);
   assert.equal(out.truncated, true);
   assert.deepEqual(out.roots[0].ch, [
-    { id: 'A', t: 'FRAME', n: 'Branch A', ch: [{ id: 'Aa', t: 'FRAME', n: 'Leaf Aa' }, '…+1 nodes'], cn: 2 },
-    { id: 'B', t: 'FRAME', n: 'Branch B', cn: 2, ch: ['…+2 nodes'] },
-    { id: 'C', t: 'FRAME', n: 'Branch C', cn: 2, ch: ['…+2 nodes'] },
+    { id: 'A', t: 'FRAME', n: 'Branch A', ch: [{ id: 'Aa', t: 'FRAME', n: 'Leaf Aa' }, '…+1 nodes (budget)'], cn: 2 },
+    { id: 'B', t: 'FRAME', n: 'Branch B', cn: 2, ch: ['…+2 nodes (budget)'] },
+    { id: 'C', t: 'FRAME', n: 'Branch C', cn: 2, ch: ['…+2 nodes (budget)'] },
   ]);
 });
 
@@ -757,11 +851,11 @@ test('request-detail: variables, styles, hex, mixed values and text without a st
   assert.equal(reply.type, 'detail');
   assert.deepEqual(reply.detail.roots, [{
     id: 'T', t: 'FRAME', n: 'Table', w: 1200, h: 336, L: 'V g$space/400', sz: 'fill,hug',
-    f: '$bg/surface/default', s: '#D0D5DD 1', r: 8,
+    f: '$bg/surface/default', s: '#D0D5DD! 1', r: 8,
     ch: [
-      { id: 'T1', t: 'TEXT', n: 'Cell', tx: 'Overview', ts: 'Label/S Semibold ~mixed', f: '#FF0000 ~mixed' },
-      { id: 'T2', t: 'TEXT', tx: '€10', ts: 'Inter 14/20 600', f: '#000000' },
-      { id: 'C', t: 'FRAME', n: 'Corners', w: 40, h: 40, r: '8,8,0,0', f: '#112233/50', s: '#D0D5DD 1,0,1,0' },
+      { id: 'T1', t: 'TEXT', n: 'Cell', tx: 'Overview', ts: 'Label/S Semibold ~mixed', f: '#FF0000! ~mixed' },
+      { id: 'T2', t: 'TEXT', tx: '€10', ts: 'Inter 14/20 600', f: '#000000!' },
+      { id: 'C', t: 'FRAME', n: 'Corners', w: 40, h: 40, r: '8,8,0,0', f: '#112233/50!', s: '#D0D5DD! 1,0,1,0' },
     ],
   }]);
 });
@@ -777,7 +871,12 @@ test('request-detail: a component instance reports main component, variants, cha
   });
   const main = node('1043:212', 'Size=M, Type=Underline', 'COMPONENT', { parent: set });
   const label = text('I1;L', 'Overview', { name: 'Label' });
-  const tab1 = node('I1;T1', 'Tab 1', 'INSTANCE', { children: [label] });
+  const tab1 = node('I1;T1', 'Tab 1', 'INSTANCE', {
+    children: [label],
+    componentProperties: {},
+    overrides: [],
+    getMainComponentAsync: async () => null,
+  });
   label.parent = tab1;
   const tab2 = node('I2', 'Tab 2', 'INSTANCE', {
     children: [],
@@ -813,10 +912,14 @@ test('request-detail: a component instance reports main component, variants, cha
     id: '61:1022', t: 'INSTANCE', n: 'Tabs / Process content', w: 1200, h: 48, sz: 'fill,fixed',
     c: 'Tabs', v: 'Size=M, Type=Underline', p: { 'Tab count': '4' },
     ot: { 'Tab 1/Label': 'Overview' }, oi: { 'Tab 2': 'State=Active' }, cn: 2,
+    ch: [
+      { id: 'I1;T1', t: 'INSTANCE', n: 'Tab 1', c: 'missing component', cn: 1, ch: [{ id: 'I1;L', t: 'TEXT', n: 'Label', tx: 'Overview' }] },
+      { id: 'I2', t: 'INSTANCE', n: 'Tab 2', c: 'missing component' },
+    ],
   }]);
 });
 
-test('request-detail: a visit cap cut is reported as a root marker, not silently', async () => {
+test('request-detail: a visit cap cut is reported on the root, not silently', async () => {
   const root = frame('R', 'Root');
   adopt(root, Array.from({ length: 1300 }, (_, i) => frame(`c${i}`, lettersOf(i))));
   // Clock stub: time never advances, so only the visit cap can cut.
@@ -824,21 +927,53 @@ test('request-detail: a visit cap cut is reported as a root marker, not silently
   ctx.figma.currentPage.selection = [root];
   await requestDetail(ctx, 12);
   const detail = plain(replies(ctx)[0]).detail;
-  assert.deepEqual(detail.roots, [{ id: 'R', t: 'FRAME', n: 'Root', cn: 1300 }, '…visitCap']);
+  assert.equal(detail.roots[0].ch.length, 61, '59 nodes fit the budget of 60 with the root, then two markers');
+  assert.match(detail.roots[0].ch.at(-2), /^…\+\d+ nodes \(budget\)$/);
+  assert.equal(detail.roots[0].ch.at(-1), '…+125 nodes (visitCap)');
+  assert.equal(detail.roots[1], '…cut roots: R (budget,visitCap)');
   assert.equal(detail.truncated, true);
 });
 
-test('request-detail: the 150 ms time box cuts the walk and reports "…timeout"', async () => {
-  const root = frame('R', 'Root');
-  adopt(root, Array.from({ length: 200 }, (_, i) => frame(`c${i}`, lettersOf(i))));
-  // Every Date.now() call advances the clock by 50 ms, so the box runs out after a few batches.
+// Each variable lookup costs 1 ms of fake time, so the time share of a root is spent by its reads.
+function slowLookupClock(figma) {
   let now = 0;
-  const ctx = await loadCode({ extra: figmaExtras({ nodes: [root] }), clock: { now: () => (now += 50) } });
+  figma.variables.getVariableByIdAsync = async () => {
+    now += 1;
+    return { name: 'bg/x' };
+  };
+  return { now: () => now };
+}
+
+test('request-detail: the 150 ms time box is split per root and reports "timeout" on the cut root', async () => {
+  const root = frame('R', 'Root');
+  adopt(root, Array.from({ length: 200 }, (_, i) => frame(`c${i}`, lettersOf(i), { fills: [solid('#FFFFFF', { boundVariables: { color: alias(`V${i}`) } })] })));
+  const extra = figmaExtras({ nodes: [root] });
+  const clock = slowLookupClock(extra);
+  const ctx = await loadCode({ extra, clock });
   ctx.figma.currentPage.selection = [root];
   await requestDetail(ctx, 13);
   const detail = plain(replies(ctx)[0]).detail;
-  assert.deepEqual(detail.roots, [{ id: 'R', t: 'FRAME', n: 'Root', cn: 200 }, '…timeout']);
+  assert.match(detail.roots[0].ch.at(-1), /^…\+\d+ nodes \(timeout\)$/);
+  assert.match(detail.roots.at(-1), /^…cut roots: R \(timeout\)$/);
   assert.equal(detail.truncated, true);
+});
+
+test('request-detail: three roots, the first large: the time box does not starve roots 2 and 3', async () => {
+  const big = frame('B', 'Big');
+  adopt(big, Array.from({ length: 200 }, (_, i) => frame(`b${i}`, lettersOf(i), { fills: [solid('#FFFFFF', { boundVariables: { color: alias(`B${i}`) } })] })));
+  const two = frame('T', 'Two');
+  adopt(two, [1, 2, 3].map((i) => frame(`t${i}`, lettersOf(i), { fills: [solid('#FFFFFF', { boundVariables: { color: alias(`T${i}`) } })] })));
+  const three = frame('H', 'Three');
+  adopt(three, [1, 2].map((i) => frame(`h${i}`, lettersOf(i), { fills: [solid('#FFFFFF', { boundVariables: { color: alias(`H${i}`) } })] })));
+  const extra = figmaExtras({ nodes: [big, two, three] });
+  const clock = slowLookupClock(extra);
+  const ctx = await loadCode({ extra, clock });
+  ctx.figma.currentPage.selection = [big, two, three];
+  await requestDetail(ctx, 15);
+  const detail = plain(replies(ctx)[0]).detail;
+  assert.deepEqual(detail.roots[1].ch.map((c) => c.id), ['t1', 't2', 't3'], 'root 2 keeps its first-level children');
+  assert.deepEqual(detail.roots[2].ch.map((c) => c.id), ['h1', 'h2'], 'root 3 keeps its first-level children');
+  assert.match(detail.roots[0].ch.at(-1), /^…\+\d+ nodes \(timeout\)$/, 'the large root is the one cut');
 });
 
 test('request-detail: a tree over 300 nodes is captured as tier A with explicit node markers', async () => {
@@ -853,10 +988,186 @@ test('request-detail: a tree over 300 nodes is captured as tier A with explicit 
   assert.equal(detail.truncated, true);
   const children = detail.roots[0].ch;
   assert.equal(children.length, 60, 'root plus 59 children fit the budget of 60');
-  assert.equal(children[children.length - 1], '…+291 nodes');
+  assert.equal(children[children.length - 1], '…+291 nodes (budget)');
 });
 
 test('request-detail: the plugin sets skipInvisibleInstanceChildren on start', async () => {
   const ctx = await loadCode({ extra: figmaExtras() });
   assert.equal(ctx.figma.skipInvisibleInstanceChildren, true);
+});
+
+// ---- instance listing, expandInstances and raw paint markers (spec §2.4 rule 3, open question 3) ----
+
+test('request-detail: an instance lists 3 levels, then reports the nodes below as "…+N nodes, ще M рівні"', async () => {
+  const inst = node('I', 'Card', 'INSTANCE', {
+    width: 100, height: 50, children: [],
+    componentProperties: {}, overrides: [], getMainComponentAsync: async () => null,
+  });
+  // Under the instance: level 1 = X, level 2 = Y, level 3 = Z, then Z -> W -> V (2 levels below Z: W, V).
+  const z = frame('Z', 'Z');
+  adopt(z, [frame('W', 'W')]);
+  z.children[0].children = [frame('V', 'V')];
+  z.children[0].children[0].parent = z.children[0];
+  const y = frame('Y', 'Y');
+  adopt(y, [z]);
+  const x = frame('X', 'X');
+  adopt(x, [y]);
+  adopt(inst, [x]);
+  const ctx = await loadCode({ extra: figmaExtras({ nodes: [inst] }) });
+  ctx.figma.currentPage.selection = [inst];
+  await requestDetail(ctx, 20);
+  const reply = plain(replies(ctx)[0]);
+  assert.equal(reply.type, 'detail', reply.message);
+  const root = reply.detail.roots[0];
+  assert.equal(root.cn, 1);
+  assert.deepEqual(root.ch, [{
+    id: 'X', t: 'FRAME', n: 'X', cn: 1,
+    ch: [{
+      id: 'Y', t: 'FRAME', n: 'Y', cn: 1,
+      ch: [{ id: 'Z', t: 'FRAME', n: 'Z', cn: 1, ch: ['…+2 nodes, ще 2 рівні'] }],
+    }],
+  }]);
+});
+
+// ---- bounded walk below an instance listing (belowOf: iterative, visit budget + time box) ----
+
+test('request-detail: a huge subtree below a listing stops at the visit cap and is marked "≥"', async () => {
+  const inst = node('I', 'Table', 'INSTANCE', {
+    width: 100, height: 50, children: [],
+    componentProperties: {}, overrides: [], getMainComponentAsync: async () => null,
+  });
+  // inst -> X -> Y -> Z (level 3, listed); Z holds 6000 children, far above the 5000 cap.
+  const z = frame('Z', 'Z');
+  adopt(z, Array.from({ length: 6000 }, (_, i) => frame(`k${i}`, 'K')));
+  const y = frame('Y', 'Y');
+  adopt(y, [z]);
+  const x = frame('X', 'X');
+  adopt(x, [y]);
+  adopt(inst, [x]);
+  const ctx = await loadCode({ extra: figmaExtras({ nodes: [inst] }) });
+  ctx.figma.currentPage.selection = [inst];
+  await requestDetail(ctx, 25);
+  const reply = plain(replies(ctx)[0]);
+  assert.equal(reply.type, 'detail', reply.message);
+  const zRec = reply.detail.roots[0].ch[0].ch[0].ch[0];
+  assert.equal(zRec.id, 'Z');
+  assert.deepEqual(zRec.ch, ['…+≥5000 nodes, ще ≥1 рівень']);
+  assert.equal(reply.detail.truncated, true);
+});
+
+test('request-detail: once the shared visit budget is spent, a later listed leaf reads "…+? nodes (walk capped)"', async () => {
+  const inst = node('I', 'Table', 'INSTANCE', {
+    width: 100, height: 50, children: [],
+    componentProperties: {}, overrides: [], getMainComponentAsync: async () => null,
+  });
+  // inst -> X -> [Y1 -> Z1, Y2 -> Z2]; Z1 and Z2 are listed leaves of the same root and share its
+  // 5000-node budget. Z1 holds 6000 children and spends the whole budget; Z2 then gets count 0.
+  const z1 = frame('Z1', 'Z');
+  adopt(z1, Array.from({ length: 6000 }, (_, i) => frame(`k${i}`, 'K')));
+  const z2 = adopt(frame('Z2', 'Z'), [frame('q1', 'Q')]);
+  const y1 = adopt(frame('Y1', 'Y'), [z1]);
+  const y2 = adopt(frame('Y2', 'Y'), [z2]);
+  const x = adopt(frame('X', 'X'), [y1, y2]);
+  adopt(inst, [x]);
+  const ctx = await loadCode({ extra: figmaExtras({ nodes: [inst] }) });
+  ctx.figma.currentPage.selection = [inst];
+  await requestDetail(ctx, 25);
+  const reply = plain(replies(ctx)[0]);
+  assert.equal(reply.type, 'detail', reply.message);
+  const leaves = reply.detail.roots[0].ch[0].ch.map((y) => y.ch[0]);
+  const markers = leaves.map((z) => z.ch[0]).sort();
+  assert.deepEqual(markers, ['…+? nodes (walk capped)', '…+≥5000 nodes, ще ≥1 рівень']);
+});
+
+test('belowOf: an exhausted shared budget returns count 0 as capped, not as an exact zero', async () => {
+  const ctx = await loadCode();
+  const top = adopt(frame('t', 'T'), [frame('c', 'C')]);
+  assert.deepEqual(plain(ctx.belowOf(top, ['geometry'], { left: 0, sinceCheck: 0, deadline: Infinity })), { count: 0, levels: 0, capped: true });
+});
+
+test('belowOf: a deep chain is walked without recursion and stops at the cap as a lower bound', async () => {
+  const ctx = await loadCode();
+  const top = frame('d0', 'D0');
+  let deep = top;
+  for (let i = 1; i < 6000; i++) {
+    const next = frame(`d${i}`, 'D');
+    adopt(deep, [next]);
+    deep = next;
+  }
+  const below = plain(ctx.belowOf(top, ['geometry'], { left: 5000, sinceCheck: 0, deadline: Infinity }));
+  assert.deepEqual(below, { count: 5000, levels: 5000, capped: true });
+});
+
+test('belowOf: a small subtree is counted exactly and not marked capped, even past the time box', async () => {
+  const ctx = await loadCode({ clock: { now: () => 1 } });
+  const a = frame('a', 'A');
+  adopt(a, [frame('a1', 'A1')]);
+  const top = adopt(frame('t', 'T'), [a, frame('b', 'B')]);
+  const past = { left: 5000, sinceCheck: 0, deadline: 0 };
+  assert.deepEqual(plain(ctx.belowOf(top, ['geometry'], past)), { count: 3, levels: 2 });
+  assert.deepEqual(plain(ctx.belowOf(top, ['geometry'], { left: 5000, sinceCheck: 0, deadline: Infinity })), { count: 3, levels: 2 });
+});
+
+test('belowOf: the time box is checked periodically with the fake clock and stops the walk', async () => {
+  const ctx = await loadCode({ clock: { now: () => 1 } });
+  const top = adopt(frame('t', 'T'), Array.from({ length: 3000 }, (_, i) => frame(`c${i}`, 'C')));
+  // The deadline (0) has already passed at the first check (after 256 counted nodes).
+  const below = plain(ctx.belowOf(top, ['geometry'], { left: 5000, sinceCheck: 0, deadline: 0 }));
+  assert.deepEqual(below, { count: 256, levels: 1, capped: true });
+});
+
+test('request-detail: expandInstances true expands the instance subtree; other values mean false', async () => {
+  const build = () => {
+    const inst = node('I', 'Card', 'INSTANCE', {
+      width: 10, height: 10, children: [],
+      componentProperties: {}, overrides: [], getMainComponentAsync: async () => null,
+    });
+    const x = frame('X', 'X');
+    const leaf = frame('LEAF', 'Leaf');
+    adopt(x, [leaf]);
+    adopt(inst, [x]);
+    return inst;
+  };
+  // depth 2 default: X at level 1 and Leaf at level 2 both show when expanded.
+  const expanded = await loadCode({ extra: figmaExtras({ nodes: [build()] }) });
+  const inst1 = build();
+  expanded.figma.currentPage.selection = [inst1];
+  await requestDetail(expanded, 21, { type: 'request-detail', requestId: 21, expandInstances: true });
+  assert.deepEqual(plain(replies(expanded)[0]).detail.roots[0].ch, [{
+    id: 'X', t: 'FRAME', n: 'X', ch: [{ id: 'LEAF', t: 'FRAME', n: 'Leaf' }],
+  }]);
+
+  for (const flag of ['yes', 1, null, {}]) {
+    const ctx = await loadCode({ extra: figmaExtras() });
+    const inst = build();
+    ctx.figma.currentPage.selection = [inst];
+    await requestDetail(ctx, 22, { type: 'request-detail', requestId: 22, expandInstances: flag });
+    const reply = plain(replies(ctx)[0]);
+    assert.equal(reply.type, 'detail', `flag=${JSON.stringify(flag)}`);
+    assert.deepEqual(reply.detail.roots[0].ch, [{ id: 'X', t: 'FRAME', n: 'X', cn: 1, ch: [{ id: 'LEAF', t: 'FRAME', n: 'Leaf' }] }], `flag=${JSON.stringify(flag)}`);
+  }
+});
+
+test('request-detail: a raw fill and stroke are marked "!", a paint style as @style:<name>, a variable as $name', async () => {
+  const box = frame('B', 'Box', {
+    fills: [solid('#464749')],
+    strokes: [solid('#112233')],
+    strokeWeight: 1,
+    fillStyleId: 'PS:1',
+  });
+  const plainBox = frame('P', 'Plain', {
+    fills: [solid('#464749')],
+    strokes: [solid('#112233', { boundVariables: { color: alias('V:bd') } })],
+    strokeWeight: 1,
+  });
+  const ctx = await loadCode({
+    extra: figmaExtras({ nodes: [box, plainBox], variables: { 'V:bd': 'border/subtle' }, styles: { 'PS:1': 'Cytiva Gray/Shade 4·2' } }),
+  });
+  ctx.figma.currentPage.selection = [box, plainBox];
+  await requestDetail(ctx, 23);
+  const roots = plain(replies(ctx)[0]).detail.roots;
+  assert.equal(roots[0].f, '@style:Cytiva Gray/Shade 4·2');
+  assert.equal(roots[0].s, '#112233! 1');
+  assert.equal(roots[1].f, '#464749!');
+  assert.equal(roots[1].s, '$border/subtle 1');
 });
