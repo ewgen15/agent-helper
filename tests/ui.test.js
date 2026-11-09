@@ -1964,3 +1964,16 @@ test('ui.html is always light: color-scheme light is set', () => {
 test('ui.html ignores the system or Figma theme: no prefers-color-scheme', () => {
   assert.doesNotMatch(HTML, /prefers-color-scheme/);
 });
+
+// ---- Header logo: inline decorative SVG instead of the ✦ glyph ----
+
+test('ui.html header has an inline decorative SVG logo next to the title', () => {
+  const header = HTML.match(/<div class="head">[\s\S]*?<\/h1>/);
+  assert.ok(header, 'header row found');
+  assert.match(header[0], /<h1><svg class="logo"[^>]*aria-hidden="true"[^>]*>/);
+  assert.match(header[0], /<\/svg>Виділені ноди<\/h1>/);
+});
+
+test('ui.html no longer uses the ✦ glyph anywhere', () => {
+  assert.doesNotMatch(HTML, /✦/);
+});

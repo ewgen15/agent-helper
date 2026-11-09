@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="uk" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Іконка: Естафета — шлейф руху</title>
+<style>
+  /* ---- Tokens (світла тема, з design/DESIGN-PRINCIPLES.md) ---- */
+  :root {
+    color-scheme: light;
+    --backdrop: #eef0f6;
+    --bg-a: #fde3d6;
+    --bg-b: #ece4fb;
+    --bg-c: #d9ebfd;
+    --card: rgba(255, 255, 255, 0.78);
+    --card-solid: #ffffff;
+    --card-edge: rgba(255, 255, 255, 0.85);
+    --line: rgba(27, 29, 42, 0.10);
+    --fg: #1b1d2a;
+    --muted: #555b6e;
+    --link: #0857c9;
+    --accent: #0a66f0;
+    --shadow: 0 10px 28px rgba(70, 60, 130, 0.14);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 32px 16px 48px;
+    background:
+      radial-gradient(circle at 12% 0%, rgba(253, 227, 214, 0.9), transparent 45%),
+      radial-gradient(circle at 88% 100%, rgba(217, 235, 253, 0.9), transparent 50%),
+      var(--backdrop);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+  h1 { margin: 0 0 4px; font-size: 20px; font-weight: 800; }
+  h2 { margin: 0 0 8px; font-size: 14px; font-weight: 800; }
+  .lead { margin: 0; color: var(--muted); font-weight: 600; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-edge);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 16px;
+  }
+  .note { margin: 6px 0 0; color: var(--muted); font-size: 11px; font-weight: 600; }
+  ul.points { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+  ul.points li { font-weight: 600; }
+  .risk { margin: 10px 0 0; padding: 8px 10px; border-radius: 12px; background: var(--card-solid); border: 1px dashed var(--line); font-weight: 700; }
+
+  /* Hero */
+  .hero {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    background: linear-gradient(165deg, var(--bg-a) 0%, var(--bg-b) 48%, var(--bg-c) 100%);
+  }
+  .hero figcaption { font-weight: 700; color: var(--muted); }
+
+  /* Size x background grid */
+  .grid {
+    display: grid;
+    grid-template-columns: 96px repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    align-items: center;
+  }
+  .grid .hd { font-size: 11px; font-weight: 700; color: var(--muted); text-align: center; }
+  .grid .sz { font-size: 11px; font-weight: 800; line-height: 1.25; }
+  .grid .sz small { display: block; font-weight: 600; color: var(--muted); }
+  .tile {
+    height: 96px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line);
+  }
+  .tile-light { background: #ffffff; }
+  .tile-dark { background: #2c2c2c; border-color: #2c2c2c; }
+  .tile-grey { background: #f5f5f5; }
+
+  /* Plugin list row (as in Figma plugin list) */
+  .rows { display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 12px;
+    border: 1px solid var(--line);
+  }
+  .row .meta { display: flex; flex-direction: column; min-width: 0; }
+  .row .name { font-weight: 800; font-size: 13px; }
+  .row .desc { color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-light { background: #ffffff; }
+  .row-dark { background: #2c2c2c; border-color: #2c2c2c; }
+  .row-dark .name { color: #f5f5f5; }
+  .row-dark .desc { color: #c9c9c9; }
+  .row-grey { background: #f5f5f5; }
+
+  svg.ico { display: block; flex: none; }
+
+  details { font-weight: 700; }
+  details + details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--link); }
+  textarea {
+    width: 100%; margin-top: 10px;
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--fg);
+    background: var(--card-solid); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px; resize: vertical;
+  }
+  button:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* Motion: тільки великий рендер, лише якщо користувач не просив менше руху.
+     Рух — у локальних координатах повернутої групи, тож translateX = уздовж діагоналі. */
+  @media (prefers-reduced-motion: no-preference) {
+    .hero .mv-b { animation: relay-baton 2.4s ease-in-out infinite; }
+    .hero .mv-1 { animation: relay-ghost-1 2.4s ease-in-out infinite; }
+    .hero .mv-2 { animation: relay-ghost-2 2.4s ease-in-out infinite; }
+    @keyframes relay-baton {
+      0%, 100% { transform: translateX(-5px); }
+      50%      { transform: translateX(5px); }
+    }
+    /* Шлейф відстає від палички і розтягується, потім знову наздоганяє */
+    @keyframes relay-ghost-1 {
+      0%, 100% { transform: translateX(-6px); }
+      50%      { transform: translateX(-1px); }
+    }
+    @keyframes relay-ghost-2 {
+      0%, 100% { transform: translateX(-6px); }
+      50%      { transform: translateX(-2px); }
+    }
+  }
+
+  @media (max-width: 520px) {
+    body { padding: 24px 16px 40px; }
+    .grid { grid-template-columns: 72px repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .tile { height: 80px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Градієнт фону і два варіанти символу. Повний: паличка + 2 шлейфи + біла точка.
+     Спрощений (16/24 px): паличка + найближчий шлейф, без точки. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="relay-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFE3D3"/>
+      <stop offset="1" stop-color="#E6E0FF"/>
+    </linearGradient>
+  </defs>
+  <symbol id="relay-full" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="url(#relay-bg)"/>
+    <g fill="#0a66f0">
+      <g transform="translate(28.6 99.4) rotate(-45)"><rect x="-16" y="-11" width="32" height="22" rx="11" fill-opacity="0.18"/></g>
+      <g transform="translate(42.8 85.2) rotate(-45)"><rect x="-20" y="-11" width="40" height="22" rx="11" fill-opacity="0.4"/></g>
+      <g transform="translate(64 64) rotate(-45)"><rect x="-28" y="-11" width="56" height="22" rx="11"/><circle cx="18" cy="0" r="4" fill="#ffffff"/></g>
+    </g>
+  </symbol>
+  <symbol id="relay-simple" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="28" fill="url(#relay-bg)"/>
+    <g fill="#0a66f0">
+      <g transform="translate(42.8 85.2) rotate(-45)"><rect x="-20" y="-11" width="40" height="22" rx="11" fill-opacity="0.4"/></g>
+      <g transform="translate(64 64) rotate(-45)"><rect x="-28" y="-11" width="56" height="22" rx="11"/></g>
+    </g>
+  </symbol>
+</svg>
+
+<main>
+  <header>
+    <h1>Іконка: Естафета — шлейф руху</h1>
+    <p class="lead">Концепт іконки плагіна «Copy Node ID → Claude»: синя паличка передається по діагоналі, шлейф показує рух від дизайнера до агента й назад.</p>
+  </header>
+
+  <!-- 1. Великий рендер (повний варіант, з анімацією, якщо дозволено) -->
+  <figure class="card hero" style="margin:0">
+    <svg class="ico" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Іконка: Естафета, синя паличка з шлейфом руху">
+      <rect width="128" height="128" rx="28" fill="url(#relay-bg)"/>
+      <g fill="#0a66f0">
+        <g transform="translate(28.6 99.4) rotate(-45)"><g class="mv-2"><rect x="-16" y="-11" width="32" height="22" rx="11" fill-opacity="0.18"/></g></g>
+        <g transform="translate(42.8 85.2) rotate(-45)"><g class="mv-1"><rect x="-20" y="-11" width="40" height="22" rx="11" fill-opacity="0.4"/></g></g>
+        <g transform="translate(64 64) rotate(-45)"><g class="mv-b"><rect x="-28" y="-11" width="56" height="22" rx="11"/><circle cx="18" cy="0" r="4" fill="#ffffff"/></g></g>
+      </g>
+    </svg>
+    <figcaption>128 px · радіус 28 · паличка 56×22 · шлейф 2 кроки (40 і 32 px, прозорість 40% і 18%)</figcaption>
+  </figure>
+
+  <!-- 2. Розміри на трьох фонах -->
+  <section class="card">
+    <h2>Розміри на фонах</h2>
+    <div class="grid">
+      <span></span>
+      <span class="hd">Світлий</span>
+      <span class="hd">Темний #2c2c2c</span>
+      <span class="hd">Figma #f5f5f5</span>
+
+      <span class="sz">64 px<small>повна</small></span>
+      <div class="tile tile-light"><svg class="ico" width="64" height="64" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="64" height="64" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="64" height="64" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+
+      <span class="sz">32 px<small>повна</small></span>
+      <div class="tile tile-light"><svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+
+      <span class="sz">24 px<small>повна (для порівняння)</small></span>
+      <div class="tile tile-light"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+
+      <span class="sz">24 px<small>спрощена, використовується</small></span>
+      <div class="tile tile-light"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-simple" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-simple" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-simple" width="128" height="128"/></svg></div>
+
+      <span class="sz">16 px<small>повна (для порівняння)</small></span>
+      <div class="tile tile-light"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg></div>
+
+      <span class="sz">16 px<small>спрощена, використовується</small></span>
+      <div class="tile tile-light"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-simple" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-simple" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-simple" width="128" height="128"/></svg></div>
+    </div>
+    <p class="note">Який варіант де: 128 px (hero), 64 і 32 px — повна версія. 24 і 16 px — спрощена (без найслабшого шлейфу і без білої точки: при 16 px шлейф стає лінією 1–2 px, а точка — одним пікселем). Рядки «повна» у 24 і 16 px показані лише для порівняння. Синя паличка на пастельному фоні має контраст близько 3.7:1, що відповідає вимозі 3:1 для графіки.</p>
+  </section>
+
+  <!-- 3. Рядок у списку плагінів Figma -->
+  <section class="card">
+    <h2>У списку плагінів Figma (32 px, повна версія)</h2>
+    <div class="rows">
+      <div class="row row-light">
+        <svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg>
+        <div class="meta">
+          <span class="name">Copy Node ID → Claude</span>
+          <span class="desc">Копіює ID виділених нодів і відправляє їх у Claude</span>
+        </div>
+      </div>
+      <div class="row row-dark">
+        <svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg>
+        <div class="meta">
+          <span class="name">Copy Node ID → Claude</span>
+          <span class="desc">Копіює ID виділених нодів і відправляє їх у Claude</span>
+        </div>
+      </div>
+      <div class="row row-grey">
+        <svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#relay-full" width="128" height="128"/></svg>
+        <div class="meta">
+          <span class="name">Copy Node ID → Claude</span>
+          <span class="desc">Копіює ID виділених нодів і відправляє їх у Claude</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Обґрунтування -->
+  <section class="card">
+    <h2>Чому ця естафета</h2>
+    <ul class="points">
+      <li>Рух читається без тексту: паличка зі шлейфом одразу асоціюється з передачею, а не зі статичною таблеткою.</li>
+      <li>Один акцент: синя паличка #0a66f0 — єдина насичена пляма. Фон пастельний (#FFE3D3 → #E6E0FF, близько до токенів принципів), а не синій, бо синя паличка на синьому фоні зливалася б.</li>
+      <li>Товсті форми: паличка 22 px із 128 (близько 17%), тож у 24 і 16 px лишається суцільна синя смуга з відчутним шлейфом.</li>
+    </ul>
+    <p class="risk">Ризик: у 16 px шлейф зливається з паличкою і знак може читатися як товста таблетка або перемикач без зв'язку з передачею. Анімація в списку плагінів не видна, тож смисл тримається лише на статичному знаку.</p>
+  </section>
+
+  <!-- 5. SVG-код для збереження -->
+  <section class="card">
+    <details>
+      <summary>SVG-код, повна версія (скопіюй і збережи як .svg)</summary>
+      <textarea readonly rows="20" aria-label="SVG-код повної іконки" spellcheck="false">&lt;svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"&gt;
+  &lt;defs&gt;
+    &lt;linearGradient id="relay-bg" x1="0" y1="0" x2="1" y2="1"&gt;
+      &lt;stop offset="0" stop-color="#FFE3D3"/&gt;
+      &lt;stop offset="1" stop-color="#E6E0FF"/&gt;
+    &lt;/linearGradient&gt;
+  &lt;/defs&gt;
+  &lt;rect width="128" height="128" rx="28" fill="url(#relay-bg)"/&gt;
+  &lt;g fill="#0a66f0"&gt;
+    &lt;g transform="translate(28.6 99.4) rotate(-45)"&gt;&lt;rect x="-16" y="-11" width="32" height="22" rx="11" fill-opacity="0.18"/&gt;&lt;/g&gt;
+    &lt;g transform="translate(42.8 85.2) rotate(-45)"&gt;&lt;rect x="-20" y="-11" width="40" height="22" rx="11" fill-opacity="0.4"/&gt;&lt;/g&gt;
+    &lt;g transform="translate(64 64) rotate(-45)"&gt;&lt;rect x="-28" y="-11" width="56" height="22" rx="11"/&gt;&lt;circle cx="18" cy="0" r="4" fill="#ffffff"/&gt;&lt;/g&gt;
+  &lt;/g&gt;
+&lt;/svg&gt;</textarea>
+    </details>
+    <details>
+      <summary>SVG-код, спрощена версія (16 і 24 px)</summary>
+      <textarea readonly rows="16" aria-label="SVG-код спрощеної іконки" spellcheck="false">&lt;svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"&gt;
+  &lt;defs&gt;
+    &lt;linearGradient id="relay-bg" x1="0" y1="0" x2="1" y2="1"&gt;
+      &lt;stop offset="0" stop-color="#FFE3D3"/&gt;
+      &lt;stop offset="1" stop-color="#E6E0FF"/&gt;
+    &lt;/linearGradient&gt;
+  &lt;/defs&gt;
+  &lt;rect width="128" height="128" rx="28" fill="url(#relay-bg)"/&gt;
+  &lt;g fill="#0a66f0"&gt;
+    &lt;g transform="translate(42.8 85.2) rotate(-45)"&gt;&lt;rect x="-20" y="-11" width="40" height="22" rx="11" fill-opacity="0.4"/&gt;&lt;/g&gt;
+    &lt;g transform="translate(64 64) rotate(-45)"&gt;&lt;rect x="-28" y="-11" width="56" height="22" rx="11"/&gt;&lt;/g&gt;
+  &lt;/g&gt;
+&lt;/svg&gt;</textarea>
+    </details>
+  </section>
+</main>
+
+</body>
+</html>

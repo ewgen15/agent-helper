@@ -53,11 +53,8 @@
     margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -0.01em;
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .head h1::before {
-    content: "✦"; display: inline-block; width: 22px; height: 22px; margin-right: 8px;
-    border-radius: 8px; background: var(--accent); color: var(--accent-fg);
-    font-size: 12px; font-weight: 800; line-height: 22px; text-align: center; vertical-align: middle;
-  }
+  /* Decorative logo: the simplified icon (design/icon/agent-helper-icon-small.svg), fixed colours. */
+  .head .logo { display: inline-block; flex: none; width: 22px; height: 22px; margin-right: 8px; vertical-align: middle; }
   .head-end { display: flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
   .head-end .count {
     display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px;
@@ -217,7 +214,7 @@
 <body>
 <div class="wrap">
   <div class="head">
-    <h1>Виділені ноди</h1>
+    <h1><svg class="logo" width="22" height="22" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><rect width="128" height="128" rx="28" fill="#0a66f0"/><rect x="26" y="34" width="76" height="56" rx="24" fill="#ffffff"/><path d="M40 84 L30 106 L62 90 Z" fill="#ffffff"/><circle cx="48" cy="62" r="10" fill="#0a66f0"/><path d="M74 62 H86" stroke="#0a66f0" stroke-width="14" stroke-linecap="round"/></svg>Виділені ноди</h1>
     <div class="head-end">
       <span id="countWrap" class="count">Вибрано: <span id="count">0</span></span>
       <span id="summary" class="count" hidden></span>

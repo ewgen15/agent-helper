@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="uk" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Іконка: рамка + іскра</title>
+<style>
+  /* ---- Tokens (з design/DESIGN-PRINCIPLES.md) ---- */
+  :root {
+    color-scheme: light;
+    --bg-a: #fde3d6;
+    --bg-b: #ece4fb;
+    --bg-c: #d9ebfd;
+    --card: rgba(255, 255, 255, 0.78);
+    --card-edge: rgba(255, 255, 255, 0.85);
+    --line: rgba(27, 29, 42, 0.10);
+    --fg: #1b1d2a;
+    --muted: #555b6e;
+    --accent: #0a66f0;
+    --shadow: 0 10px 28px rgba(70, 60, 130, 0.14);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 32px 16px 56px;
+    background:
+      linear-gradient(135deg, var(--bg-a) 0%, var(--bg-b) 50%, var(--bg-c) 100%);
+    background-color: var(--bg-b);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+
+  h1 { margin: 0 0 4px; font-size: 22px; font-weight: 800; }
+  h2 { margin: 0 0 10px; font-size: 14px; font-weight: 800; }
+  .sub { margin: 0; color: var(--muted); font-weight: 600; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-edge);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 20px;
+  }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .meta { color: var(--muted); font-size: 11px; font-weight: 600; }
+
+  /* Hero */
+  .hero { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 28px 20px 22px; }
+  .hero .meta { text-align: center; max-width: 560px; }
+
+  /* Size rows */
+  .size-row { display: grid; grid-template-columns: 56px 1fr 1fr 1fr; gap: 10px; align-items: center; }
+  .size-row + .size-row { margin-top: 12px; }
+  .size-label { font-size: 11px; font-weight: 700; color: var(--muted); }
+  .tile {
+    height: 112px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line);
+  }
+  .tile.light { background: #ffffff; }
+  .tile.dark  { background: #2c2c2c; border-color: #2c2c2c; }
+  .tile.grey  { background: #f5f5f5; }
+  .tile-cap { display: block; text-align: center; font-size: 10px; color: var(--muted); font-weight: 600; margin-top: 4px; }
+  .cells { display: contents; }
+  .cell { display: flex; flex-direction: column; }
+
+  /* Plugin list mock (Figma grey) */
+  .plist { background: #f5f5f5; border-radius: 12px; border: 1px solid var(--line); padding: 10px 12px; }
+  .prow { display: flex; align-items: center; gap: 10px; }
+  .pname { font-size: 12px; font-weight: 700; color: #1e1e1e; margin: 0; }
+  .pdesc { font-size: 11px; color: #5c5c5c; margin: 1px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Notes */
+  ul.points { margin: 0; padding-left: 18px; }
+  ul.points li { margin-bottom: 6px; }
+  .risk { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.6); border: 1px solid var(--line); }
+  .risk strong { font-weight: 800; }
+  .contrast { margin: 12px 0 0; color: var(--muted); }
+
+  /* Code details */
+  details { margin-top: 0; }
+  summary { cursor: pointer; font-weight: 800; font-size: 13px; color: #0857c9; }
+  label.lbl { display: block; font-size: 11px; font-weight: 700; color: var(--muted); margin: 10px 0 6px; }
+  textarea.code {
+    width: 100%; min-height: 220px; resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px; line-height: 1.4;
+    color: var(--fg); background: #ffffff;
+    border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+  }
+  textarea.code:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (max-width: 520px) {
+    .size-row { grid-template-columns: 40px 1fr 1fr 1fr; gap: 6px; }
+    .tile { height: 88px; }
+    .size-label { font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <header>
+    <h1>Іконка: рамка + іскра</h1>
+    <p class="sub">Плагін «Copy Node ID → Claude». Концепт: вибрані ноди (рамка виділення) і відправка в Claude (іскра).</p>
+  </header>
+
+  <!-- Hidden SVG definitions: one <symbol> reused by every <use>. Canonical geometry, viewBox 0 0 128 128. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="icon-grad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#0a66f0"/>
+        <stop offset="1" stop-color="#3a84f7"/>
+      </linearGradient>
+    </defs>
+    <symbol id="icon-frame-sparkle" viewBox="0 0 128 128">
+      <rect width="128" height="128" rx="28" fill="url(#icon-grad)"/>
+      <!-- Елемент 1: рамка виділення. Чотири кутові блоки-хендли (16×16) з плечима 10 од. -->
+      <path fill="#ffffff" d="M28 28h16v16h-16zM44 31h14v10h-14zM31 44h10v14h-10z
+        M84 28h16v16h-16zM70 31h14v10h-14zM87 44h10v14h-10z
+        M84 84h16v16h-16zM70 87h14v10h-14zM87 70h10v14h-10z
+        M28 84h16v16h-16zM44 87h14v10h-14zM31 70h10v14h-10z"/>
+      <!-- Елемент 2: одна чотирипроменева іскра (path, не гліф шрифта) у верхньому правому полі рамки. -->
+      <path fill="#ffffff" d="M72 47Q74.5 55.5 83 58Q74.5 60.5 72 69Q69.5 60.5 61 58Q69.5 55.5 72 47Z"/>
+    </symbol>
+  </svg>
+
+  <!-- Hero: 128 px -->
+  <section class="card hero" aria-labelledby="h-hero">
+    <h2 id="h-hero" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">128 px</h2>
+    <svg width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Іконка плагіна, 128 px">
+      <use href="#icon-frame-sparkle"/>
+    </svg>
+    <p class="meta">128 × 128, радіус 28. Білий гліф на акцентному градієнті #0a66f0 → #3a84f7.</p>
+  </section>
+
+  <!-- Sizes: light / dark / grey tiles -->
+  <section class="card" aria-labelledby="h-sizes">
+    <div class="card-head">
+      <h2 id="h-sizes">Розміри: 64, 32, 24, 16 px</h2>
+      <span class="meta">світлий · темний #2c2c2c · сірий Figma #f5f5f5</span>
+    </div>
+
+    <div class="size-row">
+      <span class="size-label">64 px</span>
+      <div class="tile light"><svg width="64" height="64" viewBox="0 0 128 128" role="img" aria-label="64 px, світлий фон"><use href="#icon-frame-sparkle"/></svg></div>
+      <div class="tile dark"><svg width="64" height="64" viewBox="0 0 128 128" role="img" aria-label="64 px, темний фон"><use href="#icon-frame-sparkle"/></svg></div>
+      <div class="tile grey"><svg width="64" height="64" viewBox="0 0 128 128" role="img" aria-label="64 px, сірий фон"><use href="#icon-frame-sparkle"/></svg></div>
+    </div>
+
+    <div class="size-row">
+      <span class="size-label">32 px</span>
+      <div class="tile light"><svg width="32" height="32" viewBox="0 0 128 128" role="img" aria-label="32 px, світлий фон"><use href="#icon-frame-sparkle"/></svg></div>
+      <div class="tile dark"><svg width="32" height="32" viewBox="0 0 128 128" role="img" aria-label="32 px, темний фон"><use href="#icon-frame-sparkle"/></svg></div>
+      <div class="tile grey"><svg width="32" height="32" viewBox="0 0 128 128" role="img" aria-label="32 px, сірий фон"><use href="#icon-frame-sparkle"/></svg></div>
+    </div>
+
+    <div class="size-row">
+      <span class="size-label">24 px</span>
+      <div class="tile light"><svg width="24" height="24" viewBox="0 0 128 128" role="img" aria-label="24 px, світлий фон"><use href="#icon-frame-sparkle"/></svg></div>
+      <div class="tile dark"><svg width="24" height="24" viewBox="0 0 128 128" role="img" aria-label="24 px, темний фон"><use href="#icon-frame-sparkle"/></svg></div>
+      <div class="tile grey"><svg width="24" height="24" viewBox="0 0 128 128" role="img" aria-label="24 px, сірий фон"><use href="#icon-frame-sparkle"/></svg></div>
+    </div>
+
+    <div class="size-row">
+      <span class="size-label">16 px</span>
+      <div class="tile light"><svg width="16" height="16" viewBox="0 0 128 128" role="img" aria-label="16 px, світлий фон"><use href="#icon-frame-sparkle"/></svg></div>
+      <div class="tile dark"><svg width="16" height="16" viewBox="0 0 128 128" role="img" aria-label="16 px, темний фон"><use href="#icon-frame-sparkle"/></svg></div>
+      <div class="tile grey"><svg width="16" height="16" viewBox="0 0 128 128" role="img" aria-label="16 px, сірий фон"><use href="#icon-frame-sparkle"/></svg></div>
+    </div>
+
+    <p class="meta" style="margin:14px 0 0">Розмір 32 px у списку плагінів Figma (сірий фон) показано нижче.</p>
+  </section>
+
+  <!-- Plugin list mock -->
+  <section class="card" aria-labelledby="h-list">
+    <div class="card-head">
+      <h2 id="h-list">Список плагінів Figma (макет)</h2>
+      <span class="meta">іконка 32 px</span>
+    </div>
+    <div class="plist">
+      <div class="prow">
+        <svg width="32" height="32" viewBox="0 0 128 128" role="img" aria-label="Іконка плагіна, 32 px"><use href="#icon-frame-sparkle"/></svg>
+        <div style="min-width:0">
+          <p class="pname">Copy Node ID → Claude</p>
+          <p class="pdesc">Надсилає вибрані ноди Figma в Claude разом з їхніми ID</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Note -->
+  <section class="card" aria-labelledby="h-note">
+    <h2 id="h-note">Чому ця іконка</h2>
+    <ul class="points">
+      <li><strong>Пояснює функцію.</strong> Рамка виділення означає «вибрані ноди» (те, що Figma вже показує хендлами), іскра означає «відправити в Claude».</li>
+      <li><strong>Два елементи.</strong> Одна фігура рамки з чотирма кутовими блоками і одна іскра. Менше елементів означає чіткіший силует на 16 і 24 px.</li>
+      <li><strong>Відповідає палітрі.</strong> Один акцент <code>#0a66f0</code>, заокруглена геометрія без тіней і дрібних деталей, пастельний фон сторінки сумісний із брендом.</li>
+    </ul>
+    <div class="risk">
+      <strong>Ризик:</strong> рамка з кутами схожа на загальні іконки «selection» і «crop» у Figma та інших редакторах. Відрізняє її лише іскра, тому в списку плагінів її варто перевірити поруч з іншими іконками.
+    </div>
+    <p class="meta contrast"><strong>Колір.</strong> Обрано акцентний градієнт з білим гліфом, а не пастельний фон з синім гліфом. Білий на <code>#0a66f0</code> дає ~5:1, на кінці градієнта <code>#3a84f7</code> ~3.6:1 (це не менше 3:1 для графіки). Початковий <code>#5aa0ff</code> дав би ~2.6:1 у правому нижньому куті, де стоїть кутовий блок, тож його трохи затемнено. Синій гліф на пастельному <code>#d9ebfd</code> дає лише ~4:1 і зливався б із фоном списку.</p>
+    <p class="meta contrast"><strong>Читабельність на 16 px.</strong> Перевірено геометрично, не на реальному екрані. Кутові блоки стають ~2 px, плечі рамки ~1.25 px, іскра ~3 px у поперечнику. Рамка лишається розпізнаваною, а іскра на 16 px видна як світла точка в кутку, а не як чітка фігура. На темному тлі (#2c2c2c) синій фон іконки має контраст ~2.8:1, тож силует тримається завдяки самому тайлу. Остаточну перевірку варто зробити в Figma на реальному дисплеї.</p>
+  </section>
+
+  <!-- Raw SVG for saving as .svg -->
+  <section class="card" aria-labelledby="h-code">
+    <details>
+      <summary id="h-code">Показати SVG-код</summary>
+      <label class="lbl" for="svg-src">Скопіювати SVG (клацніть у поле, виділіть усе і скопіюйте; збережіть як .svg)</label>
+      <textarea id="svg-src" class="code" readonly spellcheck="false" onclick="this.select()"><svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="icon-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a66f0"/>
+      <stop offset="1" stop-color="#3a84f7"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#icon-grad)"/>
+  <path fill="#ffffff" d="M28 28h16v16h-16zM44 31h14v10h-14zM31 44h10v14h-10z
+    M84 28h16v16h-16zM70 31h14v10h-14zM87 44h10v14h-10z
+    M84 84h16v16h-16zM70 87h14v10h-14zM87 70h10v14h-10z
+    M28 84h16v16h-16zM44 87h14v10h-14zM31 70h10v14h-10z"/>
+  <path fill="#ffffff" d="M72 47Q74.5 55.5 83 58Q74.5 60.5 72 69Q69.5 60.5 61 58Q69.5 55.5 72 47Z"/>
+</svg></textarea>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

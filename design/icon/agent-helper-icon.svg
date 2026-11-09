@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="baton-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFD9C7"/>
+      <stop offset="1" stop-color="#DCCBFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#0a66f0"/>
+  <rect x="26" y="34" width="76" height="56" rx="24" fill="#ffffff"/>
+  <path d="M40 84 L30 106 L62 90 Z" fill="#ffffff"/>
+  <circle cx="48" cy="62" r="7" fill="#0a66f0"/>
+  <path d="M72 62 H88" stroke="#0a66f0" stroke-width="8" stroke-linecap="round"/>
+  <g transform="translate(106 22) rotate(-45)">
+    <rect x="-15" y="-6" width="30" height="12" rx="6" fill="url(#baton-grad)"/>
+  </g>
+</svg>

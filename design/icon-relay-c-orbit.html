@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="uk" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Іконка: Естафета — обмін в обидва боки</title>
+<style>
+  /* ---- Tokens (світла тема, з design/DESIGN-PRINCIPLES.md) ---- */
+  :root {
+    color-scheme: light;
+    --backdrop: #eef0f6;
+    --bg-a: #fde3d6;
+    --bg-b: #ece4fb;
+    --bg-c: #d9ebfd;
+    --card: rgba(255, 255, 255, 0.78);
+    --card-solid: #ffffff;
+    --card-edge: rgba(255, 255, 255, 0.85);
+    --line: rgba(27, 29, 42, 0.10);
+    --fg: #1b1d2a;
+    --muted: #555b6e;
+    --link: #0857c9;
+    --accent: #0a66f0;
+    --shadow: 0 10px 28px rgba(70, 60, 130, 0.14);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 32px 16px 48px;
+    background:
+      radial-gradient(circle at 12% 0%, rgba(253, 227, 214, 0.9), transparent 45%),
+      radial-gradient(circle at 88% 100%, rgba(217, 235, 253, 0.9), transparent 50%),
+      var(--backdrop);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+  h1 { margin: 0 0 4px; font-size: 20px; font-weight: 800; }
+  h2 { margin: 0 0 8px; font-size: 14px; font-weight: 800; }
+  .lead { margin: 0; color: var(--muted); font-weight: 600; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-edge);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 16px;
+  }
+  .note { margin: 6px 0 0; color: var(--muted); font-size: 11px; font-weight: 600; }
+  ul.points { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+  ul.points li { font-weight: 600; }
+  .risk { margin: 10px 0 0; padding: 8px 10px; border-radius: 12px; background: var(--card-solid); border: 1px dashed var(--line); font-weight: 700; }
+
+  /* Hero */
+  .hero {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    background: linear-gradient(165deg, var(--bg-a) 0%, var(--bg-b) 48%, var(--bg-c) 100%);
+  }
+  .hero figcaption { font-weight: 700; color: var(--muted); text-align: center; }
+
+  /* Loop spins around the centre; the baton stays still. Only for users who allow motion. */
+  .hero .loop { transform-origin: 64px 64px; transform-box: view-box; }
+  @media (prefers-reduced-motion: no-preference) {
+    .hero .loop { animation: relay-spin 6s linear infinite; }
+  }
+  @keyframes relay-spin { to { transform: rotate(360deg); } }
+
+  /* Size x background grid */
+  .grid {
+    display: grid;
+    grid-template-columns: 96px repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    align-items: center;
+  }
+  .grid .hd { font-size: 11px; font-weight: 700; color: var(--muted); text-align: center; }
+  .lbl { display: flex; flex-direction: column; }
+  .grid .sz { font-size: 11px; font-weight: 800; }
+  .grid .kind { font-size: 11px; font-weight: 600; color: var(--muted); }
+  .tile {
+    height: 96px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line);
+  }
+  .tile-light { background: #ffffff; }
+  .tile-dark { background: #2c2c2c; border-color: #2c2c2c; }
+  .tile-grey { background: #f5f5f5; }
+
+  /* Plugin list row (as in Figma plugin list) */
+  .rows { display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 12px;
+    border: 1px solid var(--line);
+  }
+  .row .meta { display: flex; flex-direction: column; min-width: 0; }
+  .row .name { font-weight: 800; font-size: 13px; }
+  .row .desc { color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-light { background: #ffffff; }
+  .row-dark { background: #2c2c2c; border-color: #2c2c2c; }
+  .row-dark .name { color: #f5f5f5; }
+  .row-dark .desc { color: #c9c9c9; }
+  .row-grey { background: #f5f5f5; }
+
+  svg.ico { display: block; flex: none; }
+
+  details { font-weight: 700; }
+  summary { cursor: pointer; color: var(--link); }
+  textarea {
+    width: 100%; margin-top: 10px;
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--fg);
+    background: var(--card-solid); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px; resize: vertical;
+  }
+  button:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  @media (max-width: 520px) {
+    body { padding: 24px 16px 40px; }
+    .grid { grid-template-columns: 84px repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .tile { height: 80px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Єдине визначення іконки для <use>:
+     ico    — повна версія (батон + коло), для 64 і 32 px;
+     ico-s  — спрощена (лише коло, товстіший штрих), для 24 і 16 px. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="ico" viewBox="0 0 128 128">
+      <rect width="128" height="128" rx="28" fill="#0a66f0"/>
+      <g class="loop">
+        <g fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round">
+          <path d="M30.19 54.94 A35 35 0 0 1 97.81 54.94"/>
+          <path d="M97.81 73.06 A35 35 0 0 1 30.19 73.06"/>
+        </g>
+        <path fill="#ffffff" d="M99.36 60.74 L87.57 51.47 L104.95 46.81 Z M28.64 67.26 L40.43 76.53 L23.05 81.19 Z"/>
+      </g>
+      <rect x="44" y="56" width="40" height="16" rx="8" fill="#ffffff"/>
+    </symbol>
+    <symbol id="ico-s" viewBox="0 0 128 128">
+      <rect width="128" height="128" rx="28" fill="#0a66f0"/>
+      <g class="loop">
+        <g fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round">
+          <path d="M30.19 54.94 A35 35 0 0 1 97.81 54.94"/>
+          <path d="M97.81 73.06 A35 35 0 0 1 30.19 73.06"/>
+        </g>
+        <path fill="#ffffff" d="M99.36 60.74 L87.57 51.47 L104.95 46.81 Z M28.64 67.26 L40.43 76.53 L23.05 81.19 Z"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<main>
+  <header>
+    <h1>Іконка: Естафета — обмін в обидва боки</h1>
+    <p class="lead">Концепт іконки плагіна «Copy Node ID → Claude»: контекст іде туди і назад між дизайном і агентом, як батон у естафеті. Суцільний синій #0a66f0 замість пастельного градієнта: один акцент за принципами, а білий знак на пастельному фоні втрачає контраст у 16–24 px.</p>
+  </header>
+
+  <!-- 1. Великий рендер (анімований) -->
+  <figure class="card hero" style="margin:0">
+    <svg class="ico" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Іконка: Естафета, обмін в обидва боки">
+      <rect width="128" height="128" rx="28" fill="#0a66f0"/>
+      <g class="loop">
+        <g fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round">
+          <path d="M30.19 54.94 A35 35 0 0 1 97.81 54.94"/>
+          <path d="M97.81 73.06 A35 35 0 0 1 30.19 73.06"/>
+        </g>
+        <path fill="#ffffff" d="M99.36 60.74 L87.57 51.47 L104.95 46.81 Z M28.64 67.26 L40.43 76.53 L23.05 81.19 Z"/>
+      </g>
+      <rect x="44" y="56" width="40" height="16" rx="8" fill="#ffffff"/>
+    </svg>
+    <figcaption>128 px · радіус 28 · коло Ø70 · штрихи 8 · батон 40×16 · коло повільно обертається (6 с), батон стоїть</figcaption>
+  </figure>
+
+  <!-- 2. Розміри на трьох фонах -->
+  <section class="card">
+    <h2>Розміри на фонах</h2>
+    <div class="grid">
+      <span></span>
+      <span class="hd">Світлий</span>
+      <span class="hd">Темний #2c2c2c</span>
+      <span class="hd">Figma #f5f5f5</span>
+
+      <span class="lbl"><span class="sz">64 px</span><span class="kind">повна</span></span>
+      <div class="tile tile-light"><svg class="ico" width="64" height="64" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="64" height="64" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="64" height="64" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+
+      <span class="lbl"><span class="sz">32 px</span><span class="kind">повна</span></span>
+      <div class="tile tile-light"><svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+
+      <span class="lbl"><span class="sz">24 px</span><span class="kind">повна, для порівняння</span></span>
+      <div class="tile tile-light"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+
+      <span class="lbl"><span class="sz">24 px</span><span class="kind">спрощена (використовується)</span></span>
+      <div class="tile tile-light"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico-s" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico-s" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="24" height="24" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico-s" width="128" height="128"/></svg></div>
+
+      <span class="lbl"><span class="sz">16 px</span><span class="kind">повна, для порівняння</span></span>
+      <div class="tile tile-light"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg></div>
+
+      <span class="lbl"><span class="sz">16 px</span><span class="kind">спрощена (використовується)</span></span>
+      <div class="tile tile-light"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico-s" width="128" height="128"/></svg></div>
+      <div class="tile tile-dark"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico-s" width="128" height="128"/></svg></div>
+      <div class="tile tile-grey"><svg class="ico" width="16" height="16" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico-s" width="128" height="128"/></svg></div>
+    </div>
+    <p class="note">Де що використовувати: 64 і 32 px — повна версія з батоном (великі місця, список плагінів). 24 і 16 px — спрощена, без батона: у 16 px батон стає смужкою 5×2 px і зливається з колом, тож лишається лише коло з двома стрілками. Повна версія в 24 і 16 px показана для порівняння.</p>
+    <p class="note">Легкість читання в 16 px: коло Ø70 з товстим штрихом 10 і стрілками дає обмін в обидва боки і на світлому, і на темному фоні; стрілки розрізняються, бо стоять на протилежних кінцях кола.</p>
+  </section>
+
+  <!-- 3. Рядок у списку плагінів Figma -->
+  <section class="card">
+    <h2>У списку плагінів Figma (32 px, повна версія)</h2>
+    <div class="rows">
+      <div class="row row-light">
+        <svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg>
+        <div class="meta">
+          <span class="name">Copy Node ID → Claude</span>
+          <span class="desc">Копіює ID виділених нодів і відправляє їх у Claude</span>
+        </div>
+      </div>
+      <div class="row row-dark">
+        <svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg>
+        <div class="meta">
+          <span class="name">Copy Node ID → Claude</span>
+          <span class="desc">Копіює ID виділених нодів і відправляє їх у Claude</span>
+        </div>
+      </div>
+      <div class="row row-grey">
+        <svg class="ico" width="32" height="32" viewBox="0 0 128 128" aria-hidden="true"><use href="#ico" width="128" height="128"/></svg>
+        <div class="meta">
+          <span class="name">Copy Node ID → Claude</span>
+          <span class="desc">Копіює ID виділених нодів і відправляє їх у Claude</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Обґрунтування -->
+  <section class="card">
+    <h2>Чому ця естафета</h2>
+    <ul class="points">
+      <li>Метафора прямо відповідає функції: контекст іде з Figma до Claude і назад, а батон у центрі кола передає його між сторонами.</li>
+      <li>Два протилежні кінці стрілок читаються як обмін в обидва боки, а не як одностороння дія. Знак відрізняється від монограми «#», тож плагіни легко розрізнити у списку.</li>
+      <li>Один акцент #0a66f0 і білий знак: контраст високий на світлому, темному і сірому фонах, а спрощена версія тримає форму в 16 px.</li>
+    </ul>
+    <p class="risk">Ризик: коло легко прочитати як «оновити сторінку» чи «синхронізувати», а не як передачу контексту. Назва й опис плагіна мають пояснювати, що саме передається і в який бік.</p>
+  </section>
+
+  <!-- 5. SVG-код для збереження (статичний, без анімації) -->
+  <section class="card">
+    <details>
+      <summary>SVG-код (скопіюй і збережи як .svg)</summary>
+      <textarea readonly rows="22" aria-label="SVG-код іконки" spellcheck="false">&lt;svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"&gt;
+  &lt;rect width="128" height="128" rx="28" fill="#0a66f0"/&gt;
+  &lt;g fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round"&gt;
+    &lt;path d="M30.19 54.94 A35 35 0 0 1 97.81 54.94"/&gt;
+    &lt;path d="M97.81 73.06 A35 35 0 0 1 30.19 73.06"/&gt;
+  &lt;/g&gt;
+  &lt;path fill="#ffffff" d="M99.36 60.74 L87.57 51.47 L104.95 46.81 Z M28.64 67.26 L40.43 76.53 L23.05 81.19 Z"/&gt;
+  &lt;rect x="44" y="56" width="40" height="16" rx="8" fill="#ffffff"/&gt;
+&lt;/svg&gt;</textarea>
+    </details>
+  </section>
+</main>
+
+</body>
+</html>
