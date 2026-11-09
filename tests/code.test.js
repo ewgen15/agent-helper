@@ -152,11 +152,11 @@ test('code.js passes figma.fileKey through to the UI', async () => {
   assert.deepEqual(plain(selectionMessages(ctx)[0]), { type: 'selection', fileKey: 'FK123', nodes: [] });
 });
 
-test('code.js posts {id, name, type} for the selection on selectionchange', async () => {
+test('code.js posts {id, name, type, childCount, children} for the selection on selectionchange', async () => {
   const ctx = await loadCode({ fileKey: 'FK123' });
   ctx.figma.currentPage.selection = [
-    { id: '1:2', name: 'Button', type: 'FRAME', children: [{ id: 'x' }], parent: {} },
-    { id: '1:3', name: 'Card', type: 'RECTANGLE', extra: true },
+    frame('1:2', 'Button', { children: [text('1:4', 'Label')], parent: {} }),
+    node('1:3', 'Card', 'RECTANGLE', { extra: true }),
   ];
   ctx.handlers.selectionchange();
   const last = plain(ctx.posted[ctx.posted.length - 1]);
@@ -164,10 +164,98 @@ test('code.js posts {id, name, type} for the selection on selectionchange', asyn
     type: 'selection',
     fileKey: 'FK123',
     nodes: [
-      { id: '1:2', name: 'Button', type: 'FRAME' },
-      { id: '1:3', name: 'Card', type: 'RECTANGLE' },
+      { id: '1:2', name: 'Button', type: 'FRAME', childCount: 1, children: [{ name: 'Cell', type: 'TEXT' }] },
+      { id: '1:3', name: 'Card', type: 'RECTANGLE', childCount: 0, children: [] },
     ],
   });
+});
+
+// ---- selection children (first-level structure for the UI) ----
+
+const childrenOf = (ctx) => plain(selectionMessages(ctx).at(-1).nodes);
+
+test('selection children: a node with 3 children lists them top-most layer first, childCount 3', async () => {
+  const ctx = await loadCode();
+  ctx.figma.currentPage.selection = [
+    frame('1:2', 'Card', { children: [text('2:1', 'First'), node('2:2', 'Icon', 'VECTOR'), frame('2:3', 'Footer')] }),
+  ];
+  ctx.handlers.selectionchange();
+  assert.deepEqual(childrenOf(ctx)[0], {
+    id: '1:2',
+    name: 'Card',
+    type: 'FRAME',
+    childCount: 3,
+    children: [
+      { name: 'Footer', type: 'FRAME' },
+      { name: 'Icon', type: 'VECTOR' },
+      { name: 'Cell', type: 'TEXT' },
+    ],
+  });
+});
+
+test('selection children: a node with 25 children has childCount 25 and lists the top 20', async () => {
+  const ctx = await loadCode();
+  const kids = Array.from({ length: 25 }, (_, i) => frame(`3:${i}`, `Row ${i}`));
+  ctx.figma.currentPage.selection = [frame('3:99', 'List', { children: kids })];
+  ctx.handlers.selectionchange();
+  const [listed] = childrenOf(ctx);
+  assert.equal(listed.childCount, 25);
+  assert.equal(listed.children.length, 20);
+  assert.equal(listed.children[0].name, 'Row 24');
+  assert.equal(listed.children[19].name, 'Row 5');
+});
+
+test('selection children: a node without children (TEXT, VECTOR) has childCount 0 and children []', async () => {
+  const ctx = await loadCode();
+  ctx.figma.currentPage.selection = [text('4:1', 'Hello'), node('4:2', 'Shape', 'VECTOR')];
+  ctx.handlers.selectionchange();
+  assert.deepEqual(childrenOf(ctx).map((n) => [n.childCount, n.children]), [[0, []], [0, []]]);
+});
+
+test('selection children: a child name longer than 80 characters is truncated to 80', async () => {
+  const ctx = await loadCode();
+  const longName = 'a'.repeat(100);
+  ctx.figma.currentPage.selection = [frame('5:1', 'Parent', { children: [node('5:2', longName, 'FRAME')] })];
+  ctx.handlers.selectionchange();
+  const [child] = childrenOf(ctx)[0].children;
+  assert.equal(child.name, 'a'.repeat(80));
+  assert.equal(child.type, 'FRAME');
+});
+
+test('selection children: only the first 20 selected nodes get children; later ones get childCount only', async () => {
+  const ctx = await loadCode();
+  const selected = Array.from({ length: 22 }, (_, i) =>
+    frame(`6:${i}`, `Sel ${i}`, { children: [text(`6:${i}0`, 'A'), text(`6:${i}1`, 'B')] }),
+  );
+  ctx.figma.currentPage.selection = selected;
+  ctx.handlers.selectionchange();
+  const listed = childrenOf(ctx);
+  assert.equal(listed.length, 22);
+  for (let i = 0; i < 20; i++) {
+    assert.equal(listed[i].childCount, 2, `node ${i} childCount`);
+    assert.equal(listed[i].children.length, 2, `node ${i} children`);
+  }
+  for (let i = 20; i < 22; i++) {
+    assert.equal(listed[i].childCount, 2, `node ${i} childCount`);
+    assert.deepEqual(listed[i].children, [], `node ${i} children`);
+  }
+});
+
+test('selection children: a children getter that throws gives childCount 0 and children []', async () => {
+  const ctx = await loadCode();
+  const broken = frame('7:1', 'Broken');
+  Object.defineProperty(broken, 'children', {
+    get() {
+      throw new Error('children unavailable');
+    },
+  });
+  const fine = frame('7:2', 'Fine', { children: [text('7:3', 'Hi')] });
+  ctx.figma.currentPage.selection = [broken, fine];
+  assert.doesNotThrow(() => ctx.handlers.selectionchange());
+  assert.deepEqual(childrenOf(ctx).map((n) => [n.childCount, n.children]), [
+    [0, []],
+    [1, [{ name: 'Cell', type: 'TEXT' }]],
+  ]);
 });
 
 test('code.js posts an empty node list after the selection is cleared', async () => {

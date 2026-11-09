@@ -2,10 +2,18 @@
 // Sends the current selection to the UI and handles UI messages.
 // Runs in Figma's sandbox; the UI lives in ui.html (see manifest.json).
 
+// A first-level child of a selected node, as the UI shows the structure.
+interface SelectedChild {
+  name: string;
+  type: string;
+}
+
 interface SelectedNode {
   id: string;
   name: string;
   type: string;
+  childCount: number; // real number of direct children (0 when the node has no children)
+  children: SelectedChild[]; // first-level children in layers-panel order, at most SELECTION_CHILDREN_LIMIT
 }
 
 interface SelectionMessage {
@@ -1586,11 +1594,40 @@ async function handleRequestDetail(requestId: number, expandInstances: boolean):
   }
 }
 
+const SELECTION_CHILDREN_LIMIT = 20; // children listed per selected node
+const SELECTION_LISTED_NODES = 20; // selected nodes (in selection order) that get a children array
+const SELECTION_NAME_CHARS = 80;
+
+// Child count and the first-level children of one node (no recursion). Children are listed top-most
+// layer first, i.e. the reverse of node.children, and hidden children are included. Never throws.
+function selectionChildren(node: SceneNode, listChildren: boolean): { childCount: number; children: SelectedChild[] } {
+  try {
+    if (!('children' in node)) {
+      return { childCount: 0, children: [] };
+    }
+    const all = node.children;
+    if (!listChildren) {
+      return { childCount: all.length, children: [] };
+    }
+    const children = all
+      .slice(Math.max(0, all.length - SELECTION_CHILDREN_LIMIT))
+      .reverse()
+      .map((child): SelectedChild => ({
+        name: Array.from(child.name).slice(0, SELECTION_NAME_CHARS).join(''),
+        type: child.type,
+      }));
+    return { childCount: all.length, children };
+  } catch {
+    return { childCount: 0, children: [] };
+  }
+}
+
 function postSelection(): void {
-  const nodes: SelectedNode[] = figma.currentPage.selection.map((node) => ({
+  const nodes: SelectedNode[] = figma.currentPage.selection.map((node, index) => ({
     id: node.id,
     name: node.name,
     type: node.type,
+    ...selectionChildren(node, index < SELECTION_LISTED_NODES),
   }));
   const message: SelectionMessage = {
     type: 'selection',

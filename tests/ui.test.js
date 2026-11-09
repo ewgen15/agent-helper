@@ -63,12 +63,27 @@ function makeElement(tag) {
 
 // Builds a fresh DOM/window/navigator/parent stub and runs ui.html's script in it.
 // fetchImpl(url, init) stubs the global fetch; the default answers 200 ok.
-function loadUi({ clipboard, execCommand, fetchImpl } = {}) {
+// A Date for the page in which "now" is nowMs; every other call behaves like the real Date.
+function fakeDateAt(nowMs) {
+  const RealDate = Date;
+  return class extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) super(nowMs);
+      else super(...args);
+    }
+    static now() {
+      return nowMs;
+    }
+  };
+}
+
+function loadUi({ clipboard, execCommand, fetchImpl, now } = {}) {
   const elements = {};
   for (const id of ['count', 'list', 'format', 'auto', 'copy', 'status', 'send', 'token', 'health', 'sendStatus',
     'detailBtn', 'comment', 'commentCount', 'expandInstances', 'healthDot',
     'tablist', 'tabSelection', 'tabRecords', 'tabSettings', 'recordsTabLabel', 'panelSelection', 'panelRecords', 'panelSettings',
-    'countWrap', 'summary', 'collapseBtn', 'recordsRefresh', 'recordsHint', 'recordsStatus', 'recordsCurrent', 'recordsList', 'recordsSummary']) {
+    'countWrap', 'summary', 'collapseBtn', 'recordsRefresh', 'recordsHint', 'recordsStatus', 'recordsCurrent', 'recordsList', 'recordsSummary',
+    'recordView', 'recordBack', 'recordViewBody']) {
     elements[id] = makeElement(id);
   }
   elements.format.value = 'id';
@@ -148,6 +163,7 @@ function loadUi({ clipboard, execCommand, fetchImpl } = {}) {
     console,
     fetch,
     AbortController,
+    Date: now === undefined ? Date : fakeDateAt(now),
     setTimeout: fakeSetTimeout,
     clearTimeout: fakeClearTimeout,
     setInterval: fakeSetInterval,
@@ -161,6 +177,7 @@ function loadUi({ clipboard, execCommand, fetchImpl } = {}) {
   };
   const sendSelection = (fileKey, nodes) => sendPlugin({ type: 'selection', fileKey, nodes });
   const clickDocument = () => (docListeners.click || []).forEach((fn) => fn({}));
+  const keyDocument = (event) => (docListeners.keydown || []).forEach((fn) => fn(event));
   const clickCopy = () => elements.copy.dispatch('click', {});
 
   return {
@@ -175,6 +192,7 @@ function loadUi({ clipboard, execCommand, fetchImpl } = {}) {
     sendPlugin,
     sendSelection,
     clickDocument,
+    keyDocument,
     clickCopy,
   };
 }
@@ -1269,8 +1287,13 @@ function descendants(node, out = []) {
   return out;
 }
 
+// Elements that carry every class token of cls (a card's badge is "badge badge-new", so "badge" matches it).
 function byClass(root, cls) {
-  return descendants(root).filter((n) => n.className === cls);
+  const wanted = cls.split(' ');
+  return descendants(root).filter((n) => {
+    const have = String(n.className).split(' ');
+    return wanted.every((token) => have.includes(token));
+  });
 }
 
 function recordsStatusLine(ui) {
@@ -1673,75 +1696,6 @@ test('ui.html records token typing refreshes once, debounced to 400 ms', async (
   assert.deepEqual(plain(recordsCalls(ui)[1].init.headers), { 'x-token': 'secret3' });
 });
 
-test('ui.html records renders rows: local time, file, node count, first node, badges, unknown file', async () => {
-  const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([RECORD_A, RECORD_B])) });
-  openRecords(ui);
-  await flush();
-  const rows = ui.elements.recordsList.children;
-  assert.equal(rows.length, 2);
-
-  assert.equal(byClass(rows[0], 'rec-time')[0].textContent, hms(RECORD_A.receivedAt));
-  assert.equal(byClass(rows[0], 'rec-file')[0].textContent, 'abcdef…');
-  assert.equal(byClass(rows[0], 'rec-count')[0].textContent, '2 вузли');
-  assert.equal(byClass(rows[0], 'rec-first')[0].textContent, 'Button');
-  assert.deepEqual(byClass(rows[0], 'badge').map((b) => b.textContent), ['нове', 'деталі', 'нотатка']);
-
-  assert.equal(byClass(rows[1], 'rec-time')[0].textContent, hms(RECORD_B.receivedAt));
-  assert.equal(byClass(rows[1], 'rec-file')[0].textContent, 'файл невідомий');
-  assert.equal(byClass(rows[1], 'rec-count')[0].textContent, '1 вузол');
-  assert.deepEqual(byClass(rows[1], 'badge').map((b) => b.textContent), ['нове']);
-
-  assert.equal(rows[0].children[0].getAttribute('aria-expanded'), 'false');
-  assert.equal(rows[0].children[2].hidden, true, 'details start collapsed');
-});
-
-test('ui.html records count uses the Ukrainian plural of "вузол"', async (t) => {
-  const cases = [
-    [0, '0 вузлів'], [1, '1 вузол'], [2, '2 вузли'], [4, '4 вузли'], [5, '5 вузлів'],
-    [11, '11 вузлів'], [12, '12 вузлів'], [14, '14 вузлів'], [21, '21 вузол'], [22, '22 вузли'],
-    [25, '25 вузлів'], [102, '102 вузли'], [111, '111 вузлів'],
-  ];
-  for (const [nodeCount, expected] of cases) {
-    await t.test(`nodeCount=${nodeCount}`, async () => {
-      const record = { id: nodeCount, fileKey: 'k', receivedAt: RECORD_B.receivedAt, nodeCount, nodes: [], hasDetail: false };
-      const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([record])) });
-      openRecords(ui);
-      await flush();
-      assert.equal(byClass(ui.elements.recordsList.children[0], 'rec-count')[0].textContent, expected);
-    });
-  }
-});
-
-test('ui.html records expansion shows nodes and the note as plain text', async () => {
-  const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([RECORD_A, RECORD_B])) });
-  openRecords(ui);
-  await flush();
-  const [toggle, , detail] = ui.elements.recordsList.children[0].children;
-  assert.equal(detail.hidden, true);
-
-  toggle.dispatch('click', {});
-  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
-  assert.equal(detail.hidden, false);
-  assert.deepEqual(
-    byClass(detail, 'rec-node').map((n) => n.textContent),
-    ['1:2 · Button · FRAME', '1:3 · Card · RECTANGLE']
-  );
-  assert.equal(byClass(detail, 'rec-label')[0].textContent, 'Нотатка користувача:');
-  const note = byClass(detail, 'rec-note')[0];
-  assert.equal(note.textContent, RECORD_A.note, 'the note is shown verbatim');
-  assert.equal(note.children.length, 0, 'the note is a text node, not markup');
-  assert.equal('innerHTML' in note, false);
-
-  toggle.dispatch('click', {});
-  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
-  assert.equal(detail.hidden, true);
-
-  const plainRow = ui.elements.recordsList.children[1];
-  plainRow.children[0].dispatch('click', {});
-  assert.equal(byClass(plainRow, 'rec-note').length, 0, 'no note block without a note');
-  assert.equal(byClass(plainRow, 'rec-label').length, 0);
-});
-
 test('ui.html records shows "Записів ще немає" for an empty list', async () => {
   const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([])) });
   openRecords(ui);
@@ -2056,4 +2010,337 @@ test('ui.html format options match the copy formats accepted by code.ts', () => 
   assert.deepEqual(listed.match(/'[^']+'/g).map((s) => s.slice(1, -1)), optionValues);
   const scriptValues = SCRIPT.match(/var FORMAT_VALUES = \[([^\]]*)\]/)[1];
   assert.deepEqual(scriptValues.match(/'[^']+'/g).map((s) => s.slice(1, -1)), optionValues);
+});
+
+// ---- Record cards and the record view (Записи tab) ----
+
+// Fixed "now" for the relative-time tests (local time; 9 November 2026, 12:00).
+const NOW = new Date(2026, 10, 9, 12, 0, 0).getTime();
+
+// The card at a list position, and its open part (the real button).
+function cardOf(ui, index) {
+  return ui.elements.recordsList.children[index];
+}
+
+function openCard(ui, index) {
+  byClass(cardOf(ui, index), 'rec-open')[0].dispatch('click', {});
+}
+
+test('ui.html records cards: names with type pills, the note, and no ids or file key', async () => {
+  const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([RECORD_A])) });
+  openRecords(ui);
+  await flush();
+  const card = cardOf(ui, 0);
+  assert.equal(card.className, 'rec');
+  assert.deepEqual(
+    byClass(card, 'rec-el').map((el) => [el.children[0].textContent, el.children[1].textContent]),
+    [['FRAME', 'Button'], ['RECTANGLE', 'Card']]
+  );
+  assert.equal(byClass(card, 'rec-count')[0].textContent, '2 елементи');
+  assert.equal(byClass(card, 'rec-note')[0].textContent, RECORD_A.note, 'the note is shown as text');
+  assert.equal(byClass(card, 'badge')[0].textContent, 'нове');
+  const text = card.textContent;
+  for (const hidden of ['1:2', '1:3', 'abcdefghij', 'abcdef…', 'fileKey', 'hasDetail', 'nodeCount', 'id:']) {
+    assert.ok(!text.includes(hidden), `the card text must not contain ${hidden}`);
+  }
+});
+
+test('ui.html records cards: three names then «+N», and «Без коментаря» without a note', async () => {
+  const five = {
+    id: 11, status: 'new', fileKey: 'k', receivedAt: RECORD_B.receivedAt, nodeCount: 5, hasDetail: false,
+    nodes: ['A', 'B', 'C', 'D', 'E'].map((name, i) => ({ id: `4:${i}`, name, type: 'TEXT' })),
+  };
+  const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([five, RECORD_B])) });
+  openRecords(ui);
+  await flush();
+  const first = cardOf(ui, 0);
+  assert.deepEqual(byClass(first, 'rec-el').map((el) => el.children[1].textContent), ['A', 'B', 'C']);
+  assert.deepEqual(byClass(first, 'rec-more').map((el) => el.textContent), ['+2']);
+  assert.equal(byClass(first, 'rec-count')[0].textContent, '5 елементів');
+  assert.equal(byClass(first, 'rec-note empty')[0].textContent, 'Без коментаря');
+
+  const second = cardOf(ui, 1);
+  assert.equal(byClass(second, 'rec-count').length, 0, 'one element: no count');
+  assert.equal(byClass(second, 'rec-more').length, 0);
+  assert.equal(byClass(second, 'rec-note empty')[0].textContent, 'Без коментаря');
+});
+
+test('ui.html records cards: the element count uses the Ukrainian plural of "елемент"', async (t) => {
+  const cases = [[2, '2 елементи'], [4, '4 елементи'], [5, '5 елементів'], [11, '11 елементів'], [21, '21 елемент'], [22, '22 елементи']];
+  for (const [nodeCount, expected] of cases) {
+    await t.test(`nodeCount=${nodeCount}`, async () => {
+      const record = { id: nodeCount, status: 'new', fileKey: 'k', receivedAt: RECORD_B.receivedAt, nodeCount, nodes: [], hasDetail: false };
+      const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([record])) });
+      openRecords(ui);
+      await flush();
+      assert.equal(byClass(cardOf(ui, 0), 'rec-count')[0].textContent, expected);
+    });
+  }
+});
+
+test('ui.html records cards: relative time for recent records, «вчора», then the local date', async () => {
+  const recs = [
+    { ...RECORD_B, id: 1, receivedAt: new Date(NOW - 30 * 1000).toISOString() },
+    { ...RECORD_B, id: 2, receivedAt: new Date(NOW - 5 * 60 * 1000).toISOString() },
+    { ...RECORD_B, id: 3, receivedAt: new Date(NOW - 3 * 3600 * 1000).toISOString() },
+    { ...RECORD_B, id: 4, receivedAt: new Date(NOW - 13 * 3600 * 1000).toISOString() },
+    { ...RECORD_B, id: 5, receivedAt: new Date(2026, 10, 6, 10, 20).toISOString() },
+  ];
+  const ui = loadSendingUi({ now: NOW, fetchImpl: withRecords(recordsResponse(recs)) });
+  openRecords(ui);
+  await flush();
+  const times = recs.map((_, i) => byClass(cardOf(ui, i), 'rec-time')[0].textContent);
+  assert.deepEqual(times, ['щойно', '5 хв тому', '3 год тому', 'вчора', '06.11.2026']);
+});
+
+test('ui.html records: clicking a card opens the record view with every name, the full note and a collapsed technical block', async () => {
+  const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([RECORD_A])) });
+  openRecords(ui);
+  await flush();
+  openCard(ui, 0);
+  const { recordView, recordsList, recordsCurrent, recordViewBody } = ui.elements;
+  assert.equal(recordView.hidden, false);
+  assert.equal(recordsList.hidden, true, 'the view replaces the list');
+  assert.equal(recordsCurrent.hidden, true);
+  assert.deepEqual(byClass(recordViewBody, 'rec-view-el').map((el) => el.children[1].textContent), ['Button', 'Card']);
+  const note = byClass(recordViewBody, 'rec-view-note')[0];
+  assert.equal(note.textContent, RECORD_A.note);
+  assert.equal(note.children.length, 0, 'the note is a text node, not markup');
+  assert.equal(byClass(recordViewBody, 'rec-tech')[0].hidden, true, 'the technical block starts collapsed');
+  const techBtn = descendants(recordViewBody).find((n) => n.tagName === 'button' && n.textContent === 'Технічні дані');
+  assert.equal(techBtn.getAttribute('aria-expanded'), 'false');
+  assert.equal(ui.elements.recordsTabLabel.textContent, 'Записи (1)', 'the count is unchanged by opening a record');
+});
+
+test('ui.html records: the note keeps its line breaks; «Назад» and Escape return to the list', async () => {
+  const multi = { ...RECORD_B, id: 9, note: 'перший рядок\n\n  другий рядок' };
+  const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([multi, RECORD_A])) });
+  openRecords(ui);
+  await flush();
+  openCard(ui, 0);
+  assert.equal(byClass(ui.elements.recordViewBody, 'rec-view-note')[0].textContent, multi.note);
+
+  ui.elements.recordBack.dispatch('click', {});
+  assert.equal(ui.elements.recordView.hidden, true);
+  assert.equal(ui.elements.recordsList.hidden, false);
+  assert.equal(ui.elements.recordsList.children.length, 2);
+
+  openCard(ui, 1);
+  assert.equal(ui.elements.recordView.hidden, false);
+  ui.keyDocument({ key: 'Enter' });
+  assert.equal(ui.elements.recordView.hidden, false, 'Enter does not close the view');
+  ui.keyDocument({ key: 'Escape' });
+  assert.equal(ui.elements.recordView.hidden, true, 'Escape returns to the list');
+  assert.equal(ui.elements.recordsList.hidden, false);
+});
+
+test('ui.html records: the technical block lists the ids, fileKey, nodeCount and hasDetail', async () => {
+  const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([RECORD_A])) });
+  openRecords(ui);
+  await flush();
+  openCard(ui, 0);
+  const view = ui.elements.recordViewBody;
+  const techBtn = descendants(view).find((n) => n.tagName === 'button' && n.textContent === 'Технічні дані');
+  techBtn.dispatch('click', {});
+  assert.equal(techBtn.getAttribute('aria-expanded'), 'true');
+  assert.equal(byClass(view, 'rec-tech')[0].hidden, false);
+  assert.deepEqual(byClass(view, 'rec-tech-line').map((l) => l.textContent), [
+    'id: 7',
+    'fileKey: abcdefghij',
+    'nodeCount: 2',
+    'hasDetail: true',
+    '1:2 · Button · FRAME',
+    '1:3 · Card · RECTANGLE',
+  ]);
+});
+
+test('ui.html records: the record view shows «ще N» when a record has more than 20 nodes', async () => {
+  const nodes = Array.from({ length: 20 }, (_, i) => ({ id: `6:${i}`, name: `N${i}`, type: 'FRAME' }));
+  const big = { id: 12, status: 'new', fileKey: 'k', receivedAt: RECORD_B.receivedAt, nodeCount: 23, nodes, hasDetail: false };
+  const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([big])) });
+  openRecords(ui);
+  await flush();
+  openCard(ui, 0);
+  assert.equal(byClass(ui.elements.recordViewBody, 'rec-view-el').length, 20);
+  assert.equal(byClass(ui.elements.recordViewBody, 'rec-view-more')[0].textContent, 'ще 3');
+});
+
+test('ui.html records: the status toggle works from the card and from the record view', async () => {
+  const ui = loadSendingUi({
+    fetchImpl: withRecordsAndStatus(recordsResponse([RECORD_A]), statusResponse(200, { ok: true, record: { id: 7, status: 'done' } })),
+  });
+  openRecords(ui);
+  await flush();
+  statusButton(ui, 'Позначити виконаним').dispatch('click', {});
+  await flush();
+  assert.equal(statusCalls(ui).length, 1, 'from the card');
+  assert.deepEqual(JSON.parse(statusCalls(ui)[0].init.body), { status: 'done' });
+
+  openCard(ui, 0);
+  await flush();
+  const viewBtn = descendants(ui.elements.recordViewBody).find((n) => n.tagName === 'button' && n.textContent === 'Позначити виконаним');
+  assert.ok(viewBtn, 'the view offers the same toggle');
+  viewBtn.dispatch('click', {});
+  await flush();
+  assert.equal(statusCalls(ui).length, 2, 'from the view');
+  assert.equal(statusCalls(ui)[1].url, STATUS_URL);
+  assert.deepEqual(JSON.parse(statusCalls(ui)[1].init.body), { status: 'done' });
+});
+
+test('ui.html records: turning sending off closes the record view', async () => {
+  const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse([RECORD_A])) });
+  openRecords(ui);
+  await flush();
+  openCard(ui, 0);
+  ui.elements.send.checked = false;
+  ui.elements.send.dispatch('change', {});
+  assert.equal(ui.elements.recordView.hidden, true);
+  assert.equal(ui.elements.recordsHint.hidden, false);
+});
+
+test('ui.html records markup: cards are buttons, the view sits in the records panel and starts hidden', () => {
+  assert.match(HTML, /<div id="recordView" class="rec-view" hidden>/);
+  assert.match(HTML, /<button id="recordBack" class="secondary rec-view-back" type="button">← Назад до записів<\/button>/);
+  assert.match(SCRIPT, /makeEl\('button', 'rec-open'\)/, 'the open part of a card is a real button');
+  assert.ok(HTML.indexOf('id="recordView"') > HTML.indexOf('id="panelRecords"'));
+  const style = HTML.match(/<style>([\s\S]*?)<\/style>/)[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(style, /opacity/, 'muted cards use colour, not opacity');
+});
+
+// ---- Children of the selected nodes (Виділення tab) ----
+
+function sel(id, name, type, childCount, children) {
+  return { id, name, type, childCount, children };
+}
+
+// n children named C1..Cn, all TEXT.
+function kidsList(n) {
+  return Array.from({ length: n }, (_, i) => ({ name: `C${i + 1}`, type: 'TEXT' }));
+}
+
+function rowOf(ui, index) {
+  return ui.elements.list.children[index];
+}
+
+// The children holder of a row (its last child).
+function kidsHolder(ui, index) {
+  return byClass(rowOf(ui, index), 'kids')[0];
+}
+
+function kidNames(ui, index) {
+  return byClass(rowOf(ui, index), 'kid').map((k) => byClass(k, 'nm')[0].textContent);
+}
+
+function kidButtons(ui, index) {
+  return descendants(kidsHolder(ui, index)).filter((n) => n.tagName === 'button');
+}
+
+function kidButtonText(ui, index) {
+  return kidButtons(ui, index).map((b) => b.textContent);
+}
+
+test('ui.html children: four pills first, «ще N» expands to every child sent and back to four', () => {
+  const ui = loadUi();
+  ui.sendSelection('FK1', [sel('1:2', 'Button', 'FRAME', 7, kidsList(7))]);
+  assert.deepEqual(kidNames(ui, 0), ['C1', 'C2', 'C3', 'C4']);
+  assert.deepEqual(kidButtonText(ui, 0), ['ще 3']);
+  assert.equal(kidButtons(ui, 0)[0].getAttribute('aria-expanded'), 'false');
+
+  kidButtons(ui, 0)[0].dispatch('click', {});
+  assert.equal(kidNames(ui, 0).length, 7);
+  assert.deepEqual(kidButtonText(ui, 0), ['згорнути']);
+  assert.equal(kidButtons(ui, 0)[0].getAttribute('aria-expanded'), 'true');
+  assert.equal(byClass(kidsHolder(ui, 0), 'kid-rest').length, 0, 'everything was sent: no «…і ще» line');
+
+  kidButtons(ui, 0)[0].dispatch('click', {});
+  assert.deepEqual(kidNames(ui, 0), ['C1', 'C2', 'C3', 'C4']);
+});
+
+test('ui.html children: a count above the number sent shows a final «…і ще M» line once expanded', () => {
+  const ui = loadUi();
+  ui.sendSelection('FK1', [sel('1:2', 'Frame', 'FRAME', 25, kidsList(20)), sel('1:3', 'Card', 'FRAME', 0, [])]);
+  assert.deepEqual(kidButtonText(ui, 0), ['ще 21']);
+  kidButtons(ui, 0)[0].dispatch('click', {});
+  assert.equal(kidNames(ui, 0).length, 20);
+  const rest = byClass(kidsHolder(ui, 0), 'kid-rest');
+  assert.deepEqual(rest.map((r) => r.textContent), ['…і ще 5']);
+  assert.equal(rest[0].tagName, 'div', 'the line is not interactive');
+  assert.equal(kidsHolder(ui, 1).children.length, 0, 'a node without children adds nothing');
+});
+
+test('ui.html children: with more than two nodes the rows are compact and children sit behind «N дочірніх»', () => {
+  const ui = loadUi();
+  ui.sendSelection('FK1', [
+    sel('1:2', 'Button', 'FRAME', 6, kidsList(6)),
+    sel('1:3', 'Card', 'FRAME', 0, []),
+    sel('1:4', 'Title', 'TEXT', 1, kidsList(1)),
+  ]);
+  assert.equal(ui.elements.list.className, 'list compact');
+  assert.deepEqual(kidButtonText(ui, 0), ['6 дочірніх']);
+  assert.deepEqual(kidNames(ui, 0), [], 'collapsed by default');
+  assert.equal(kidsHolder(ui, 1).children.length, 0);
+  assert.deepEqual(kidButtonText(ui, 2), ['1 дочірній']);
+
+  kidButtons(ui, 0)[0].dispatch('click', {});
+  assert.equal(kidButtons(ui, 0)[0].getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(kidNames(ui, 0), ['C1', 'C2', 'C3', 'C4']);
+  assert.deepEqual(kidButtonText(ui, 0), ['6 дочірніх', 'ще 2']);
+
+  kidButtons(ui, 0)[1].dispatch('click', {});
+  assert.equal(kidNames(ui, 0).length, 6);
+
+  kidButtons(ui, 0)[0].dispatch('click', {});
+  assert.deepEqual(kidNames(ui, 0), [], 'the toggle closes the pills');
+});
+
+test('ui.html children: with two nodes or fewer the roomy layout shows four pills and no toggle', () => {
+  const ui = loadUi();
+  ui.sendSelection('FK1', [sel('1:2', 'Button', 'FRAME', 2, kidsList(2)), sel('1:3', 'Card', 'FRAME', 1, kidsList(1))]);
+  assert.equal(ui.elements.list.className, 'list');
+  assert.deepEqual(kidNames(ui, 0), ['C1', 'C2']);
+  assert.deepEqual(kidButtonText(ui, 0), []);
+  assert.deepEqual(kidNames(ui, 1), ['C1']);
+  assert.deepEqual(kidButtonText(ui, 1), []);
+});
+
+test('ui.html children: the expansion is kept while the selection stays and reset when it changes', () => {
+  const ui = loadUi();
+  const a = sel('1:2', 'Button', 'FRAME', 7, kidsList(7));
+  const b = sel('1:3', 'Card', 'FRAME', 0, []);
+  ui.sendSelection('FK1', [a, b]);
+  kidButtons(ui, 0)[0].dispatch('click', {});
+  assert.equal(kidNames(ui, 0).length, 7);
+
+  ui.sendSelection('FK1', [{ ...b }, { ...a }]);
+  assert.equal(kidNames(ui, 1).length, 7, 'the same ids in another order: kept');
+
+  ui.sendSelection('FK1', [{ ...a }]);
+  assert.deepEqual(kidNames(ui, 0), ['C1', 'C2', 'C3', 'C4'], 'other nodes: reset');
+  ui.sendSelection('FK1', [{ ...a }, { ...b }]);
+  assert.deepEqual(kidNames(ui, 0), ['C1', 'C2', 'C3', 'C4'], 'the reset is not undone');
+});
+
+test('ui.html children: the POST bodies carry only id, name and type of each node', async () => {
+  const ui = loadSendingUi();
+  ui.sendSelection('FK1', [sel('1:2', 'Button', 'FRAME', 2, kidsList(2))]);
+  await flush();
+  assert.deepEqual(bodyOf(postCalls(ui)[0]).nodes, [{ id: '1:2', name: 'Button', type: 'FRAME' }]);
+
+  ui.elements.detailBtn.dispatch('click', {});
+  reply(ui, lastDetailRequest(ui).requestId, ['1:2']);
+  await flush();
+  const detailBody = bodyOf(postCalls(ui)[postCalls(ui).length - 1]);
+  assert.ok('detail' in detailBody, 'the detail POST went out');
+  assert.deepEqual(detailBody.nodes, [{ id: '1:2', name: 'Button', type: 'FRAME' }]);
+});
+
+test('ui.html children: a node without children adds nothing; broken or missing fields do not break the list', () => {
+  const ui = loadUi();
+  ui.sendSelection('FK1', [
+    { id: '1:2', name: 'Button', type: 'FRAME' },
+    { id: '1:3', name: 'Card', type: 'RECTANGLE', childCount: 'many', children: 'none' },
+  ]);
+  assert.equal(kidsHolder(ui, 0).children.length, 0);
+  assert.equal(kidsHolder(ui, 1).children.length, 0);
+  assert.equal(ui.elements.count.textContent, '2');
 });

@@ -30,6 +30,7 @@
     --tag-inst-bg: #ebe2ff; --tag-inst-fg: #4a2c9c;
     --tag-comp-bg: #d9f6e3; --tag-comp-fg: #15602f;
     --tag-frame-bg: #dbe9ff; --tag-frame-fg: #174a94;
+    --link: #0857c9;          /* текстові посилання-кнопки (design/DESIGN-PRINCIPLES.md) */
     --shadow-sm: 0 4px 14px rgba(70, 60, 130, 0.07);
   }
 
@@ -172,12 +173,82 @@
   .records-summary { margin-right: auto; color: var(--muted); font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .records-head button { flex: none; white-space: nowrap; }
   .hint { color: var(--muted); font-weight: 600; font-size: 11px; }
-  .records-list {
-    background: var(--card); border: 1px solid var(--card-edge); border-radius: 16px; box-shadow: var(--shadow-sm);
-    padding: 4px; max-height: 160px; overflow: auto;
+  .records-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .records-empty {
+    padding: 10px; background: var(--card); border: 1px solid var(--card-edge); border-radius: 14px;
+    box-shadow: var(--shadow-sm); color: var(--muted); text-align: center; font-weight: 600;
   }
-  .records-empty { padding: 8px; color: var(--muted); text-align: center; font-weight: 600; }
-  .rec + .rec { border-top: 1px solid var(--line); }
+  /* Record card: one translucent surface. The open part is a real button; the status button sits below it. */
+  .rec {
+    min-width: 0; background: var(--card); border: 1px solid var(--card-edge); border-radius: 14px; box-shadow: var(--shadow-sm);
+  }
+  .rec:hover { background: rgba(255, 255, 255, 0.92); }
+  .rec-open {
+    display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; padding: 10px 12px 6px;
+    background: none; border: none; border-radius: 14px 14px 0 0; text-align: left; cursor: pointer; font: inherit; color: var(--fg);
+  }
+  .rec-title {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; min-width: 0;
+    font-size: 13px; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere;
+  }
+  .rec-el { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+  .rec-el .tag { font-size: 9px; padding: 1px 6px; }
+  .rec-el .nm { overflow-wrap: anywhere; }
+  .rec-sep { margin-left: -4px; color: var(--muted); font-weight: 700; }
+  .rec-more { color: var(--muted); font-weight: 700; }
+  .rec-count { color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .rec-note {
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; font-weight: 600; color: var(--fg);
+  }
+  .rec-note.empty { color: var(--muted); font-style: italic; font-weight: 700; }
+  .rec-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+  .rec-time { font-variant-numeric: tabular-nums; }
+  .rec-actions { padding: 0 12px 10px; }
+  .rec-actions button { font-size: 11px; padding: 4px 10px; white-space: nowrap; flex: none; }
+  /* Badges: нове = blue pastel, виконано = neutral. */
+  .badge {
+    flex: none; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; white-space: nowrap;
+    background: var(--card-solid); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .badge-new { background: var(--tile-blue); color: var(--tile-blue-fg); box-shadow: none; }
+  .badge-done { background: var(--card-solid); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+  /* Done cards are muted by colour (not opacity). */
+  .rec.done .rec-title, .rec.done .rec-note, .rec.done .rec-meta { color: var(--muted); }
+  /* Link-style text buttons (≥24 px target, accent-free: --link is the text link colour). */
+  .link-btn {
+    min-height: 24px; padding: 2px 6px; background: none; border: 0; border-radius: 8px;
+    color: var(--link); font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  .link-btn:hover { background: rgba(255, 255, 255, 0.7); text-decoration: underline; }
+
+  /* The record view: one card under a back button. */
+  .rec-view { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .rec-view-back { align-self: flex-start; }
+  .rec-view-card {
+    display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px;
+    background: var(--card); border: 1px solid var(--card-edge); border-radius: 16px; box-shadow: var(--shadow-sm);
+  }
+  .rec-view-title {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0;
+    font-size: 15px; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere;
+  }
+  .rec-view-el {
+    display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 2px 8px 2px 3px; border-radius: 999px;
+    background: var(--card-solid); box-shadow: inset 0 0 0 1px var(--line); font-size: 12px; font-weight: 700;
+  }
+  .rec-view-el .tag { font-size: 9px; padding: 1px 6px; }
+  .rec-view-el .nm { overflow-wrap: anywhere; }
+  .rec-view-more { color: var(--muted); font-size: 12px; font-weight: 700; }
+  .rec-view-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+  .rec-view-label { color: var(--muted); font-size: 11px; font-weight: 700; }
+  .rec-view-note { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; font-weight: 600; color: var(--fg); }
+  .rec-view-note.empty { color: var(--muted); font-style: italic; font-weight: 700; }
+  .rec-view-actions { display: flex; }
+  .rec-tech { display: flex; flex-direction: column; gap: 2px; min-width: 0; color: var(--muted); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+  .rec-tech[hidden] { display: none; }
+
+  /* Current row ("Поточне"): a toggle with its node list. */
   .rec-row {
     display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0;
     padding: 6px 8px; background: none; border: none; border-radius: 12px; text-align: left;
@@ -185,26 +256,25 @@
   }
   .rec-row:hover { background: rgba(255, 255, 255, 0.7); }
   .rec-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-  .rec-time { flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 800; }
-  .rec-file { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; font-weight: 700; }
-  .rec-count { flex: none; color: var(--muted); white-space: nowrap; font-size: 11px; font-weight: 700; }
   .rec-first { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; font-weight: 700; }
-  /* Badges: the first badge of a row is the state (нове = blue pastel, виконано = neutral); the rest are neutral. */
-  .badge {
-    flex: none; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; white-space: nowrap;
-    background: var(--card-solid); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line);
-  }
-  .rec-line > .badge:first-child { background: var(--tile-blue); color: var(--tile-blue-fg); box-shadow: none; }
-  .rec.done .rec-line > .badge:first-child { background: var(--card-solid); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
   .rec-detail { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 8px; color: var(--muted); font-size: 11px; font-weight: 600; }
-  /* Done rows are muted by colour (not opacity): the text goes to --muted. */
-  .rec.done .rec-row { color: var(--muted); }
-  .rec-actions { padding: 0 8px 6px; }
-  .rec-actions button { font-size: 11px; padding: 4px 10px; white-space: nowrap; flex: none; }
   .rec-node { overflow-wrap: anywhere; }
-  .rec-label { margin-top: 4px; color: var(--muted); font-weight: 700; }
-  .rec-note { color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 600; }
-  .rec.done .rec-note { color: var(--muted); }
+
+  /* Children of the selected nodes: a row of pills under the node row. */
+  .list.compact .item { padding: 4px 8px; }
+  .list.compact .meta { display: none; }
+  .kids { grid-column: 1 / -1; grid-row: 3; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .kids:empty { display: none; }
+  .kid-list { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+  .kid {
+    display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
+    padding: 1px 8px 1px 2px; border-radius: 999px; background: var(--card-solid);
+    box-shadow: inset 0 0 0 1px var(--line); font-size: 11px; font-weight: 600;
+  }
+  .kid .tag { font-size: 9px; padding: 1px 5px; }
+  .kid .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kid-rest { color: var(--muted); font-size: 11px; font-weight: 600; }
+
   /* "Поточне": a dashed tile above the saved records; it is not a record and is not counted. */
   .records-current { background: var(--card-solid); border: 1px dashed var(--line); border-radius: 14px; padding: 4px 0; }
   .rec-cur-line { padding: 8px 10px; color: var(--fg); font-weight: 600; overflow-wrap: anywhere; }
@@ -282,6 +352,10 @@
       <div id="recordsStatus" class="status" role="status" aria-live="polite"></div>
       <div id="recordsCurrent" class="records-current" hidden></div>
       <div id="recordsList" class="records-list"></div>
+      <div id="recordView" class="rec-view" hidden>
+        <button id="recordBack" class="secondary rec-view-back" type="button">← Назад до записів</button>
+        <div id="recordViewBody" class="rec-view-card"></div>
+      </div>
     </div>
 
     <div id="panelSettings" class="panel" role="tabpanel" aria-labelledby="tabSettings" hidden>
@@ -443,22 +517,163 @@
     return typeof fileKey === 'string' && fileKey ? fileKey.slice(0, 6) + '…' : 'файл невідомий';
   }
 
-  // Ukrainian plural of "вузол": 1, 21 -> вузол; 2-4, 22-24 -> вузли; everything else, 11-14 included -> вузлів.
-  function nodesWord(n) {
+  // ---- Children of the selected nodes (Виділення tab) ----
+
+  // Pills shown per node before «ще N»; more than COMPACT_AFTER selected nodes switch the rows to the compact layout.
+  var CHILDREN_SHOWN = 4;
+  var COMPACT_AFTER = 2;
+  // Session only, per node id; both maps are dropped when the set of selected ids changes.
+  var childExpanded = {}; // every child that was sent is shown
+  var childOpen = {}; // compact layout: the «N дочірніх» toggle is open
+
+  // Ukrainian plural: 1, 21 -> one; 2-4, 22-24 -> few; everything else, 11-14 included -> many.
+  function plural(n, one, few, many) {
     var mod10 = n % 10;
     var mod100 = n % 100;
-    if (mod10 === 1 && mod100 !== 11) return 'вузол';
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'вузли';
-    return 'вузлів';
+    if (mod10 === 1 && mod100 !== 11) return one;
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+    return many;
+  }
+
+  // Ukrainian plural of "вузол": 1, 21 -> вузол; 2-4, 22-24 -> вузли; everything else, 11-14 included -> вузлів.
+  function nodesWord(n) {
+    return plural(n, 'вузол', 'вузли', 'вузлів');
+  }
+
+  function elementsWord(n) {
+    return plural(n, 'елемент', 'елементи', 'елементів');
+  }
+
+  function childrenWord(n) {
+    return plural(n, 'дочірній', 'дочірні', 'дочірніх');
   }
 
   function nodeName(n) {
     return typeof n.name === 'string' && n.name ? n.name : '(без назви)';
   }
 
-  // The tab label, the refresh button and the hint/list visibility follow the send settings.
+  // The pastel class for a known node type; any other type gets the neutral pair.
+  function tagClass(type) {
+    return Object.prototype.hasOwnProperty.call(NODE_TAG_CLASS, type) ? NODE_TAG_CLASS[type] : 't-other';
+  }
+
+  function tagEl(type) {
+    return makeEl('span', 'tag ' + tagClass(type), textOf(type));
+  }
+
+  // A type tag and a name in one pill; the name is the .nm span (ellipsis or wrapping is set in CSS per place).
+  function nameChip(n, cls) {
+    var chip = makeEl('span', cls);
+    if (textOf(n.type)) chip.appendChild(tagEl(n.type));
+    chip.appendChild(makeEl('span', 'nm', nodeName(n)));
+    return chip;
+  }
+
+  // The children of one node as the plugin sent them. A missing or broken field counts as "none".
+  // total is never below the number of children actually sent.
+  function childInfo(n) {
+    var sent = Array.isArray(n.children) ? n.children.filter(function (c) { return c && typeof c === 'object'; }) : [];
+    var reported = typeof n.childCount === 'number' && isFinite(n.childCount) && n.childCount > 0 ? Math.floor(n.childCount) : 0;
+    return { sent: sent, total: Math.max(reported, sent.length) };
+  }
+
+  // Fills the children holder of one row (the holder stays in the DOM, so only its content is rebuilt).
+  // Compact layout: a «N дочірніх» toggle first. The pills follow when the layout is roomy or the toggle is open.
+  // focus names the button to focus after the rebuild ('toggle' or 'more'), so keyboard focus stays on it.
+  function fillKids(holder, n, compact, focus) {
+    var id = textOf(n.id);
+    var info = childInfo(n);
+    holder.textContent = '';
+    if (info.total === 0) return;
+    var open = !compact || childOpen[id] === true;
+    if (compact) {
+      var toggle = makeEl('button', 'link-btn', info.total + ' ' + childrenWord(info.total));
+      toggle.type = 'button';
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.addEventListener('click', function () {
+        childOpen[id] = !open;
+        fillKids(holder, n, compact, 'toggle');
+      });
+      holder.appendChild(toggle);
+      if (focus === 'toggle') toggle.focus();
+    }
+    if (!open) return;
+    var expanded = childExpanded[id] === true;
+    var shown = expanded ? info.sent : info.sent.slice(0, CHILDREN_SHOWN);
+    var pills = makeEl('div', 'kid-list');
+    shown.forEach(function (c) {
+      pills.appendChild(nameChip(c, 'kid'));
+    });
+    var more = null;
+    if (info.total > CHILDREN_SHOWN) {
+      more = makeEl('button', 'link-btn', expanded ? 'згорнути' : 'ще ' + (info.total - CHILDREN_SHOWN));
+      more.type = 'button';
+      more.setAttribute('aria-expanded', String(expanded));
+      more.addEventListener('click', function () {
+        childExpanded[id] = !expanded;
+        fillKids(holder, n, compact, 'more');
+      });
+      pills.appendChild(more);
+    }
+    holder.appendChild(pills);
+    if (expanded && info.total > info.sent.length) {
+      holder.appendChild(makeEl('div', 'kid-rest', '…і ще ' + (info.total - info.sent.length)));
+    }
+    if (focus === 'more' && more) more.focus();
+  }
+
+  function buildSelectionRow(n, compact) {
+    var row = makeEl('div', 'item');
+    row.appendChild(makeEl('span', 'name', nodeName(n)));
+    row.appendChild(tagEl(n.type));
+    row.appendChild(makeEl('span', 'meta', textOf(n.id) + ' · ' + textOf(n.type)));
+    var kids = makeEl('div', 'kids');
+    fillKids(kids, n, compact, null);
+    row.appendChild(kids);
+    return row;
+  }
+
+  // ---- Time labels for the records ----
+
+  function dayStart(ms) {
+    var d = new Date(ms);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  function formatDate(d) {
+    return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + d.getFullYear();
+  }
+
+  // «щойно», «5 хв тому», «3 год тому» (same local day), «вчора», else the local date dd.mm.yyyy.
+  function relativeTime(value, now) {
+    var d = typeof value === 'string' ? new Date(value) : null;
+    if (!d || isNaN(d.getTime())) return 'невідомо';
+    var diff = now - d.getTime();
+    if (diff < 60000) return 'щойно';
+    if (diff < 3600000) return Math.floor(diff / 60000) + ' хв тому';
+    var today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    var yesterday = new Date(today.getTime());
+    yesterday.setDate(yesterday.getDate() - 1);
+    var day = dayStart(d.getTime());
+    if (day === today.getTime()) return Math.floor(diff / 3600000) + ' год тому';
+    if (day === yesterday.getTime()) return 'вчора';
+    return formatDate(d);
+  }
+
+  // Full local date and time for the record view: dd.mm.yyyy HH:MM.
+  function formatDateTime(value) {
+    var d = typeof value === 'string' ? new Date(value) : null;
+    if (!d || isNaN(d.getTime())) return 'невідомо';
+    return formatDate(d) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  // The tab label, the refresh button and the hint/list/view visibility follow the send settings and the view state.
   function updateRecordsUi() {
     var active = recordsActive();
+    // Turning sending off closes an open record view.
+    if (!active) openedRecordKey = null;
     // The count is known only after a successful load; before that the tab shows just "Записи".
     // Only records with status "new" are counted; the header gives "N нових з M" (M = all saved records).
     var newCount = recordsData ? recordsData.filter(function (r) { return r.status === 'new'; }).length : 0;
@@ -466,8 +681,12 @@
     recordsSummaryEl.textContent = recordsData ? newCount + ' нових з ' + recordsData.length : '';
     recordsRefreshEl.disabled = !active;
     recordsHintEl.hidden = active;
-    recordsListEl.hidden = !active;
-    recordsCurrentEl.hidden = !active || !recordsData;
+    // The record view replaces the current row and the list while it is open.
+    var viewing = openedRecordKey !== null && findRecord(openedRecordKey) !== null;
+    recordsListEl.hidden = !active || viewing;
+    recordsCurrentEl.hidden = !active || !recordsData || viewing;
+    recordViewEl.hidden = !viewing;
+    renderRecordView();
   }
 
   function nodeLine(n) {
@@ -523,79 +742,174 @@
     recordsCurrentEl.appendChild(detail);
   }
 
-  // One row: a button that toggles the details, and a hidden block with the nodes and the note.
-  function buildRecordRow(r) {
-    var key = textOf(r.id);
-    var nodes = Array.isArray(r.nodes) ? r.nodes.filter(function (n) { return n && typeof n === 'object'; }) : [];
-    var count = typeof r.nodeCount === 'number' ? r.nodeCount : nodes.length;
-    var note = typeof r.note === 'string' ? r.note : '';
-    var expanded = recordsExpanded[key] === true;
-    var done = r.status === 'done';
+  // ---- Record cards and the record view (session only) ----
 
-    var row = makeEl('div', done ? 'rec done' : 'rec');
-    var toggle = makeEl('button', 'rec-row');
-    toggle.type = 'button';
-    toggle.setAttribute('aria-expanded', String(expanded));
+  var CARD_NAMES = 3; // names on a card before «+N»
+  var recordViewEl = document.getElementById('recordView');
+  var recordBackEl = document.getElementById('recordBack');
+  var recordViewBodyEl = document.getElementById('recordViewBody');
+  var openedRecordKey = null; // the record shown in the record view; null: the list is shown
+  var recordTechOpen = false; // the «Технічні дані» block of the opened record; collapsed on every open
+  var recordOpenBtns = {}; // record key -> its card's open button (focus returns there after «Назад»)
 
-    var top = makeEl('span', 'rec-line');
-    top.appendChild(makeEl('span', 'rec-time', formatTime(r.receivedAt)));
-    top.appendChild(makeEl('span', 'rec-file', fileLabel(r.fileKey)));
-
-    var sub = makeEl('span', 'rec-line');
-    sub.appendChild(makeEl('span', 'badge', done ? 'виконано' : 'нове'));
-    sub.appendChild(makeEl('span', 'rec-count', count + ' ' + nodesWord(count)));
-    if (nodes.length) sub.appendChild(makeEl('span', 'rec-first', nodeName(nodes[0])));
-    if (r.hasDetail === true) sub.appendChild(makeEl('span', 'badge', 'деталі'));
-    if (note || (typeof r.noteLength === 'number' && r.noteLength > 0)) {
-      sub.appendChild(makeEl('span', 'badge', 'нотатка'));
+  function findRecord(key) {
+    if (!recordsData) return null;
+    for (var i = 0; i < recordsData.length; i++) {
+      if (recordsData[i] && textOf(recordsData[i].id) === key) return recordsData[i];
     }
-
-    toggle.appendChild(top);
-    toggle.appendChild(sub);
-
-    var detail = makeEl('div', 'rec-detail');
-    detail.hidden = !expanded;
-    nodes.forEach(function (n) {
-      detail.appendChild(makeEl('div', 'rec-node', nodeLine(n)));
-    });
-    if (note) {
-      detail.appendChild(makeEl('div', 'rec-label', 'Нотатка користувача:'));
-      detail.appendChild(makeEl('div', 'rec-note', note));
-    }
-
-    toggle.addEventListener('click', function () {
-      var open = recordsExpanded[key] !== true;
-      recordsExpanded[key] = open;
-      toggle.setAttribute('aria-expanded', String(open));
-      detail.hidden = !open;
-    });
-
-    var actions = makeEl('div', 'rec-actions');
-    var statusBtn = makeEl('button', 'secondary', done ? 'Повернути в нові' : 'Позначити виконаним');
-    statusBtn.type = 'button';
-    statusBtn.disabled = recordStatusPending[key] === true;
-    statusBtn.addEventListener('click', function () {
-      setRecordStatus(r.id, done ? 'new' : 'done');
-    });
-    actions.appendChild(statusBtn);
-
-    row.appendChild(toggle);
-    row.appendChild(actions);
-    row.appendChild(detail);
-    return row;
+    return null;
   }
 
+  function recordNodes(r) {
+    return Array.isArray(r.nodes) ? r.nodes.filter(function (n) { return n && typeof n === 'object'; }) : [];
+  }
+
+  function recordCount(r, nodes) {
+    return typeof r.nodeCount === 'number' ? r.nodeCount : nodes.length;
+  }
+
+  // The status button of one record; the card and the record view both use it.
+  function statusButtonFor(r) {
+    var key = textOf(r.id);
+    var done = r.status === 'done';
+    var btn = makeEl('button', 'secondary', done ? 'Повернути в нові' : 'Позначити виконаним');
+    btn.type = 'button';
+    btn.disabled = recordStatusPending[key] === true;
+    btn.addEventListener('click', function () {
+      setRecordStatus(r.id, done ? 'new' : 'done');
+    });
+    return btn;
+  }
+
+  // The title line of a card: the first names with their type pills, then «+N», then «N елементів».
+  function cardTitle(nodes, count) {
+    var title = makeEl('span', 'rec-title');
+    var shown = nodes.slice(0, CARD_NAMES);
+    shown.forEach(function (n, i) {
+      if (i > 0) title.appendChild(makeEl('span', 'rec-sep', ','));
+      title.appendChild(nameChip(n, 'rec-el'));
+    });
+    if (!shown.length) title.appendChild(makeEl('span', 'rec-more', 'Без елементів'));
+    if (count > shown.length) title.appendChild(makeEl('span', 'rec-more', '+' + (count - shown.length)));
+    if (count > 1) title.appendChild(makeEl('span', 'rec-count', count + ' ' + elementsWord(count)));
+    return title;
+  }
+
+  // One record as a card. The open part is a real button (click or Enter opens the record view);
+  // the status button sits below it, so no button is nested in another.
+  function buildRecordCard(r) {
+    var key = textOf(r.id);
+    var nodes = recordNodes(r);
+    var count = recordCount(r, nodes);
+    var note = typeof r.note === 'string' ? r.note.trim() : '';
+    var done = r.status === 'done';
+
+    var card = makeEl('div', done ? 'rec done' : 'rec');
+    var open = makeEl('button', 'rec-open');
+    open.type = 'button';
+    open.appendChild(cardTitle(nodes, count));
+    open.appendChild(note ? makeEl('span', 'rec-note', note) : makeEl('span', 'rec-note empty', 'Без коментаря'));
+    var meta = makeEl('span', 'rec-meta');
+    meta.appendChild(makeEl('span', 'rec-time', relativeTime(r.receivedAt, Date.now())));
+    meta.appendChild(makeEl('span', done ? 'badge badge-done' : 'badge badge-new', done ? 'виконано' : 'нове'));
+    open.appendChild(meta);
+    open.addEventListener('click', function () {
+      openRecord(key);
+    });
+    recordOpenBtns[key] = open;
+
+    var actions = makeEl('div', 'rec-actions');
+    actions.appendChild(statusButtonFor(r));
+    card.appendChild(open);
+    card.appendChild(actions);
+    return card;
+  }
+
+  function openRecord(key) {
+    openedRecordKey = key;
+    recordTechOpen = false;
+    updateRecordsUi();
+    recordBackEl.focus();
+  }
+
+  // «Назад до записів» and Escape: the list comes back and the card of the record gets the focus again.
+  function closeRecord() {
+    if (openedRecordKey === null) return;
+    var key = openedRecordKey;
+    openedRecordKey = null;
+    updateRecordsUi();
+    if (recordOpenBtns[key]) recordOpenBtns[key].focus();
+  }
+
+  // Builds the view of the opened record (empty when no record is open). Ids and file keys live only in «Технічні дані».
+  function renderRecordView() {
+    recordViewBodyEl.textContent = '';
+    var r = openedRecordKey === null ? null : findRecord(openedRecordKey);
+    if (!r) return;
+    var key = textOf(r.id);
+    var nodes = recordNodes(r);
+    var count = recordCount(r, nodes);
+    var note = typeof r.note === 'string' ? r.note : '';
+    var done = r.status === 'done';
+    var body = recordViewBodyEl;
+
+    var title = makeEl('h2', 'rec-view-title');
+    nodes.forEach(function (n) {
+      title.appendChild(nameChip(n, 'rec-view-el'));
+    });
+    if (!nodes.length) title.appendChild(makeEl('span', 'rec-view-el', 'Без елементів'));
+    if (count > nodes.length) title.appendChild(makeEl('span', 'rec-view-more', 'ще ' + (count - nodes.length)));
+    body.appendChild(title);
+
+    var meta = makeEl('div', 'rec-view-meta');
+    meta.appendChild(makeEl('span', null, 'Отримано ' + formatDateTime(r.receivedAt)));
+    meta.appendChild(makeEl('span', done ? 'badge badge-done' : 'badge badge-new', done ? 'виконано' : 'нове'));
+    if (count > 1) meta.appendChild(makeEl('span', null, count + ' ' + elementsWord(count)));
+    body.appendChild(meta);
+
+    body.appendChild(makeEl('div', 'rec-view-label', 'Коментар'));
+    body.appendChild(note.trim() !== ''
+      ? makeEl('div', 'rec-view-note', note)
+      : makeEl('div', 'rec-view-note empty', 'Без коментаря'));
+
+    var actions = makeEl('div', 'rec-view-actions');
+    actions.appendChild(statusButtonFor(r));
+    body.appendChild(actions);
+
+    var techBtn = makeEl('button', 'link-btn', 'Технічні дані');
+    techBtn.type = 'button';
+    techBtn.setAttribute('aria-expanded', String(recordTechOpen));
+    var tech = makeEl('div', 'rec-tech');
+    tech.hidden = !recordTechOpen;
+    techBtn.addEventListener('click', function () {
+      recordTechOpen = !recordTechOpen;
+      techBtn.setAttribute('aria-expanded', String(recordTechOpen));
+      tech.hidden = !recordTechOpen;
+    });
+    body.appendChild(techBtn);
+    tech.appendChild(makeEl('div', 'rec-tech-line', 'id: ' + key));
+    tech.appendChild(makeEl('div', 'rec-tech-line', 'fileKey: ' + (typeof r.fileKey === 'string' && r.fileKey ? r.fileKey : 'немає')));
+    tech.appendChild(makeEl('div', 'rec-tech-line', 'nodeCount: ' + count));
+    tech.appendChild(makeEl('div', 'rec-tech-line', 'hasDetail: ' + String(r.hasDetail === true)));
+    nodes.forEach(function (n) {
+      tech.appendChild(makeEl('div', 'rec-tech-line', nodeLine(n)));
+    });
+    body.appendChild(tech);
+  }
+
+  // Rebuilds the list of cards (and the view, if one is open). A record that is gone closes the view.
   function renderRecords() {
     renderCurrent();
     recordsListEl.textContent = '';
-    if (!recordsData) return;
-    if (!recordsData.length) {
-      recordsListEl.appendChild(makeEl('div', 'records-empty', 'Записів ще немає'));
-      return;
+    recordOpenBtns = {};
+    if (recordsData && openedRecordKey !== null && !findRecord(openedRecordKey)) openedRecordKey = null;
+    if (recordsData) {
+      if (!recordsData.length) recordsListEl.appendChild(makeEl('div', 'records-empty', 'Записів ще немає'));
+      recordsData.forEach(function (r) {
+        recordsListEl.appendChild(buildRecordCard(r));
+      });
     }
-    recordsData.forEach(function (r) {
-      recordsListEl.appendChild(buildRecordRow(r));
-    });
+    updateRecordsUi();
   }
 
   // GETs /records with x-token. Never rejects; a failure only sets the section's status line.
@@ -1133,6 +1447,9 @@
 
   function render() {
     countEl.textContent = String(state.nodes.length);
+    // More than COMPACT_AFTER selected nodes: one-line rows, children collapsed behind a toggle.
+    var compact = state.nodes.length > COMPACT_AFTER;
+    listEl.className = compact ? 'list compact' : 'list';
     listEl.textContent = '';
     if (!state.nodes.length) {
       var empty = document.createElement('div');
@@ -1141,21 +1458,7 @@
       listEl.appendChild(empty);
     } else {
       state.nodes.forEach(function (n) {
-        var row = document.createElement('div');
-        row.className = 'item';
-        var name = document.createElement('span');
-        name.className = 'name';
-        name.textContent = n.name || '(без назви)';
-        var meta = document.createElement('span');
-        meta.className = 'meta';
-        meta.textContent = n.id + ' · ' + n.type;
-        var tag = document.createElement('span');
-        tag.className = 'tag ' + (NODE_TAG_CLASS[n.type] || 't-other');
-        tag.textContent = String(n.type);
-        row.appendChild(name);
-        row.appendChild(tag);
-        row.appendChild(meta);
-        listEl.appendChild(row);
+        listEl.appendChild(buildSelectionRow(n, compact));
       });
     }
     copyBtn.disabled = !state.nodes.length;
@@ -1186,6 +1489,16 @@
       ? msg.nodes.filter(function (n) { return n && n.id != null; })
       : [];
 
+    // The comment, any pending detail request and the expanded children belong to the set of selected ids.
+    var key = selectedIdsKey();
+    if (key !== selectionKey) {
+      selectionKey = key;
+      childExpanded = {};
+      childOpen = {};
+      clearComment();
+      cancelDetail();
+    }
+
     render();
     setStatus('', '');
 
@@ -1195,15 +1508,6 @@
 
     if (isNew && autoEl.checked && userGestured && state.nodes.length) {
       copySelection();
-    }
-
-    // The comment and any pending detail request belong to the set of selected ids.
-    var key = selectedIdsKey();
-    if (key !== selectionKey) {
-      selectionKey = key;
-      clearComment();
-      cancelDetail();
-      updateDetailUi();
     }
 
     // Every selection message is sent, including an empty one (nodes: []).
@@ -1270,6 +1574,13 @@
   });
   recordsRefreshEl.addEventListener('click', function () {
     refreshRecords();
+  });
+  recordBackEl.addEventListener('click', function () {
+    closeRecord();
+  });
+  // Escape closes the record view (a no-op while the list is shown).
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeRecord();
   });
 
   detailBtn.addEventListener('click', function () {
