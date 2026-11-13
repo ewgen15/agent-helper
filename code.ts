@@ -69,7 +69,21 @@ interface DetailErrorMessage {
   message: string;
 }
 
-type PluginMessage = SelectionMessage | SettingsMessage | DetailMessage | DetailErrorMessage;
+// Reply to select-nodes (restoring a saved record's selection). requested = distinct ids asked for,
+// found = nodes actually selected on the page that was used.
+type SelectStatus = 'ok' | 'partial' | 'none' | 'other-file' | 'error';
+
+interface SelectResultMessage {
+  type: 'select-result';
+  requestId: number;
+  status: SelectStatus;
+  requested: number;
+  found: number;
+  switchedPage: boolean;
+  pageName?: string;
+}
+
+type PluginMessage = SelectionMessage | SettingsMessage | DetailMessage | DetailErrorMessage | SelectResultMessage;
 
 // expandInstances is optional: only boolean true expands instance subtrees; any other value is ignored (false).
 type UIMessage =
@@ -77,8 +91,10 @@ type UIMessage =
   | { type: 'close' }
   | { type: 'save-settings'; settings: SettingsInput }
   | { type: 'request-detail'; requestId: number; expandInstances?: boolean }
+  | { type: 'select-nodes'; requestId: number; fileKey: string | null; ids: string[] }
   | { type: 'resize'; collapsed: boolean };
 
+const SELECT_IDS_LIMIT = 500; // most node ids one select-nodes message may carry
 const SETTINGS_KEY = 'settings';
 const SETTINGS_KEYS: readonly string[] = ['send', 'token', 'format'];
 const COPY_FORMATS: readonly CopyFormat[] = ['id', 'idname', 'link', 'claude'];
@@ -121,6 +137,18 @@ function isUIMessage(value: unknown): value is UIMessage {
   }
   if (record.type === 'request-detail') {
     return typeof record.requestId === 'number' && Number.isFinite(record.requestId);
+  }
+  // ids: at most SELECT_IDS_LIMIT strings; fileKey: a string or null (undefined is not accepted).
+  if (record.type === 'select-nodes') {
+    const ids = record.ids;
+    return (
+      typeof record.requestId === 'number' &&
+      Number.isFinite(record.requestId) &&
+      (record.fileKey === null || typeof record.fileKey === 'string') &&
+      Array.isArray(ids) &&
+      ids.length <= SELECT_IDS_LIMIT &&
+      ids.every((id) => typeof id === 'string')
+    );
   }
   // collapsed must be exactly a boolean; any other value (or a missing key) is ignored.
   if (record.type === 'resize') {
@@ -1594,6 +1622,96 @@ async function handleRequestDetail(requestId: number, expandInstances: boolean):
   }
 }
 
+// The page that holds a node (walks .parent up to the PageNode); undefined when there is none.
+function pageOfNode(node: BaseNode): PageNode | undefined {
+  const seen = new Set<BaseNode>();
+  let current: BaseNode | null = node;
+  while (current !== null && !seen.has(current)) {
+    if (current.type === 'PAGE') {
+      return current;
+    }
+    seen.add(current);
+    current = current.parent;
+  }
+  return undefined;
+}
+
+// A node that can be selected: found, not removed, and not a page or the document. Never throws.
+async function selectableNodeById(id: string): Promise<{ node: SceneNode; page: PageNode } | undefined> {
+  try {
+    const node = await figma.getNodeByIdAsync(id);
+    if (node === null || node.type === 'PAGE' || node.type === 'DOCUMENT') {
+      return undefined;
+    }
+    if ((node as unknown as { removed?: unknown }).removed === true) {
+      return undefined;
+    }
+    const page = pageOfNode(node);
+    return page === undefined ? undefined : { node, page };
+  } catch {
+    return undefined;
+  }
+}
+
+function postSelectResult(reply: SelectResultMessage): void {
+  try {
+    figma.ui.postMessage(reply);
+  } catch {
+    // The UI is gone; there is nobody left to report to.
+  }
+}
+
+// Restores a saved record's selection. Selects only the nodes on the page of the first found node
+// (switching to that page when needed) and always replies once. Never throws.
+async function handleSelectNodes(requestId: number, fileKey: string | null, ids: string[]): Promise<void> {
+  const unique = Array.from(new Set(ids));
+  const reply: SelectResultMessage = {
+    type: 'select-result',
+    requestId,
+    status: 'error',
+    requested: unique.length,
+    found: 0,
+    switchedPage: false,
+  };
+  try {
+    if (typeof fileKey === 'string' && typeof figma.fileKey === 'string' && fileKey !== figma.fileKey) {
+      reply.status = 'other-file';
+      return;
+    }
+    const resolved: { node: SceneNode; page: PageNode }[] = [];
+    for (const id of unique) {
+      const entry = await selectableNodeById(id);
+      if (entry !== undefined) {
+        resolved.push(entry);
+      }
+    }
+    if (resolved.length === 0) {
+      reply.status = 'none';
+      return;
+    }
+    const targetPage = resolved[0].page;
+    const nodes = resolved.filter((entry) => entry.page === targetPage).map((entry) => entry.node);
+    if (targetPage !== figma.currentPage) {
+      await figma.setCurrentPageAsync(targetPage);
+      reply.switchedPage = true;
+      reply.pageName = targetPage.name;
+    }
+    figma.currentPage.selection = nodes;
+    try {
+      figma.viewport.scrollAndZoomIntoView(nodes);
+    } catch {
+      // Scrolling is cosmetic: the selection is already set.
+    }
+    reply.found = nodes.length;
+    reply.status = nodes.length === unique.length ? 'ok' : 'partial';
+  } catch {
+    reply.status = 'error';
+    reply.found = 0;
+  } finally {
+    postSelectResult(reply);
+  }
+}
+
 const SELECTION_CHILDREN_LIMIT = 20; // children listed per selected node
 const SELECTION_LISTED_NODES = 20; // selected nodes (in selection order) that get a children array
 const SELECTION_NAME_CHARS = 80;
@@ -1687,6 +1805,9 @@ figma.ui.onmessage = (msg: unknown) => {
       break;
     case 'request-detail':
       void handleRequestDetail(msg.requestId, msg.expandInstances === true);
+      break;
+    case 'select-nodes':
+      void handleSelectNodes(msg.requestId, msg.fileKey, msg.ids);
       break;
     case 'resize':
       figma.ui.resize(UI_WIDTH, msg.collapsed ? UI_COLLAPSED_HEIGHT : UI_HEIGHT);

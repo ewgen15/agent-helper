@@ -79,9 +79,22 @@
   /* Scroll area under the fixed header and tab bar. */
   .content {
     display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0;
-    overflow-y: auto; overscroll-behavior: contain; padding: 2px 4px 16px; scrollbar-width: thin;
+    overflow-y: auto; overscroll-behavior: contain; padding: 2px 4px 0; scrollbar-width: thin;
   }
-  .panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: none; }
+  /* The bottom gap lives on the panel, not on #content: the selection tab's sticky footer must reach the bottom edge. */
+  .panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: none; padding-bottom: 16px; }
+  #panelSelection { padding-bottom: 0; }
+  /* Selection tab: the sticky footer (comment, «Відправити деталі», status) stays at the bottom while the list scrolls. */
+  .sel-footer {
+    position: sticky; bottom: 0; z-index: 1;
+    display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px;
+    background: var(--card); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--card-edge); border-bottom: 0; border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 20px rgba(70, 60, 130, 0.12);
+  }
+  /* The copy controls: a collapsed block at the bottom of the scrollable part. */
+  .copy-block > summary { cursor: pointer; color: var(--muted); font-weight: 700; padding: 2px 0; }
+  .copy-body { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
   /* Collapsed: only the header row stays visible (code.ts resizes the window to 56 px). */
   body.collapsed .content,
   body.collapsed .tabs { display: none; }
@@ -103,9 +116,10 @@
   }
 
   /* Cards: translucent surface over the gradient. Nothing is nested inside another card. */
+  /* The list grows with its content: the whole tab scrolls as one area (#content), no inner scrollbar. */
   .list {
     background: var(--card); border: 1px solid var(--card-edge); border-radius: 16px;
-    box-shadow: var(--shadow-sm); padding: 4px; max-height: 150px; overflow: auto;
+    box-shadow: var(--shadow-sm); padding: 4px;
   }
   .item {
     display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 6px; row-gap: 2px; align-items: center;
@@ -204,8 +218,12 @@
   .rec-note.empty { color: var(--muted); font-style: italic; font-weight: 700; }
   .rec-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
   .rec-time { font-variant-numeric: tabular-nums; }
-  .rec-actions { padding: 0 12px 10px; }
+  .rec-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 12px 10px; }
   .rec-actions button { font-size: 11px; padding: 4px 10px; white-space: nowrap; flex: none; }
+  /* «Виділити у Figma»: a button and its result line; the line is hidden while empty. */
+  .select-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+  .select-status { min-height: 0; font-size: 11px; overflow-wrap: anywhere; }
+  .select-status:empty { display: none; }
   /* Badges: нове = blue pastel, виконано = neutral. */
   .badge {
     flex: none; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; white-space: nowrap;
@@ -244,7 +262,7 @@
   .rec-view-label { color: var(--muted); font-size: 11px; font-weight: 700; }
   .rec-view-note { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; font-weight: 600; color: var(--fg); }
   .rec-view-note.empty { color: var(--muted); font-style: italic; font-weight: 700; }
-  .rec-view-actions { display: flex; }
+  .rec-view-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .rec-tech { display: flex; flex-direction: column; gap: 2px; min-width: 0; color: var(--muted); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
   .rec-tech[hidden] { display: none; }
 
@@ -316,31 +334,37 @@
     <div id="panelSelection" class="panel" role="tabpanel" aria-labelledby="tabSelection">
   <div id="list" class="list"></div>
 
-  <label class="check">
-    <input type="checkbox" id="auto">
-    <span>Автокопіювання при виборі</span>
-  </label>
-
-  <button id="copy" class="primary" disabled>Копіювати</button>
-
-  <div id="status" class="status" role="status" aria-live="polite"></div>
-
   <label class="check expand-check" title="Показати вміст інстансів (більше токенів)">
     <input type="checkbox" id="expandInstances" aria-label="Розгортати інстанси: показати вміст інстансів (більше токенів)" disabled>
     <span>Розгортати інстанси</span>
   </label>
 
-  <div class="comment-box">
-    <div class="comment-head">
-      <label for="comment">Коментар для Claude</label>
-      <span id="commentCount" class="count">0/2000</span>
+  <details id="copyBlock" class="copy-block">
+    <summary>Копіювання</summary>
+    <div class="copy-body">
+      <div class="hint">Формат копіювання — в налаштуваннях</div>
+      <label class="check">
+        <input type="checkbox" id="auto">
+        <span>Автокопіювання при виборі</span>
+      </label>
+      <button id="copy" class="primary" disabled>Копіювати</button>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
     </div>
-    <textarea id="comment" rows="2" maxlength="2000" placeholder="Коментар для Claude…"></textarea>
+  </details>
+
+  <div class="sel-footer">
+    <div class="comment-box">
+      <div class="comment-head">
+        <label for="comment">Коментар для Claude</label>
+        <span id="commentCount" class="count">0/2000</span>
+      </div>
+      <textarea id="comment" rows="2" maxlength="2000" placeholder="Коментар для Claude…"></textarea>
+    </div>
+
+    <button id="detailBtn" class="primary" type="button" disabled>Відправити деталі</button>
+
+    <div id="sendStatus" class="status" role="status" aria-live="polite"></div>
   </div>
-
-  <button id="detailBtn" class="primary" type="button" disabled>Відправити деталі</button>
-
-  <div id="sendStatus" class="status" role="status" aria-live="polite"></div>
     </div>
 
     <div id="panelRecords" class="panel" role="tabpanel" aria-labelledby="tabRecords" hidden>
@@ -742,6 +766,109 @@
     recordsCurrentEl.appendChild(detail);
   }
 
+  // ---- «Виділити у Figma»: restores a saved record's nodes in Figma (contract: select-nodes / select-result) ----
+
+  var SELECT_LABEL = 'Виділити у Figma';
+  var SELECT_TIMEOUT_MS = 5000;
+  var selectSeq = 0;
+  var selectPending = null; // {requestId, key, timer} while the plugin answers; null otherwise
+  var selectMsgs = {}; // record key -> {text, kind} of its last result (session only)
+  var cardSlots = []; // {key, btn, status} of the cards built by the last renderRecords
+  var viewSlots = []; // {key, btn, status} of the record view built by the last renderRecordView
+
+  // The node ids of a record: `ids` when the server sent it, else the ids of its nodes.
+  function recordIds(r) {
+    var list = Array.isArray(r.ids) ? r.ids : recordNodes(r).map(function (n) { return n.id; });
+    return list.map(textOf).filter(function (id) { return id !== ''; });
+  }
+
+  // The text and the kind of a select-result. Partial and not-found are reported in words, not colour alone.
+  function selectResultLine(msg) {
+    var requested = typeof msg.requested === 'number' ? msg.requested : 0;
+    var found = typeof msg.found === 'number' ? msg.found : requested;
+    var text;
+    var kind = 'err';
+    if (msg.status === 'ok') {
+      text = 'Виділено ' + found + ' ' + elementsWord(found) + ' у Figma';
+      kind = 'ok';
+    } else if (msg.status === 'partial') {
+      text = 'Виділено ' + found + ' з ' + requested + ' (решту не знайдено або вони на іншій сторінці)';
+      kind = '';
+    } else if (msg.status === 'none') {
+      text = 'Елементи не знайдено у Figma (можливо, видалені)';
+    } else if (msg.status === 'other-file') {
+      text = 'Цей запис з іншого файлу Figma. Відкрийте той файл';
+    } else {
+      text = 'Не вдалося виділити';
+    }
+    if (msg.switchedPage === true) {
+      text += typeof msg.pageName === 'string' && msg.pageName
+        ? ' · перейшли на сторінку «' + msg.pageName + '»'
+        : ' · перейшли на іншу сторінку';
+    }
+    return { text: text, kind: kind };
+  }
+
+  // Shows the pending text, the last result of the record, or nothing; the button is off while its request runs.
+  function paintSelectSlot(slot) {
+    var pending = selectPending !== null && selectPending.key === slot.key;
+    var msg = pending ? { text: 'Виділяю…', kind: '' } : selectMsgs[slot.key];
+    slot.btn.disabled = pending;
+    slot.status.textContent = msg ? msg.text : '';
+    slot.status.className = 'status select-status' + (msg && msg.kind ? ' ' + msg.kind : '');
+  }
+
+  function paintSelectSlots() {
+    cardSlots.concat(viewSlots).forEach(paintSelectSlot);
+  }
+
+  // A new request replaces the one in progress: its late reply is ignored (the requestId no longer matches).
+  function selectInFigma(key, fileKey, ids) {
+    var requestId = ++selectSeq;
+    if (selectPending) clearTimeout(selectPending.timer);
+    var timer = setTimeout(function () {
+      if (!selectPending || selectPending.requestId !== requestId) return;
+      selectPending = null;
+      selectMsgs[key] = { text: 'Figma не відповіла', kind: 'err' };
+      paintSelectSlots();
+    }, SELECT_TIMEOUT_MS);
+    selectPending = { requestId: requestId, key: key, timer: timer };
+    paintSelectSlots();
+    parent.postMessage({
+      pluginMessage: { type: 'select-nodes', requestId: requestId, fileKey: fileKey, ids: ids }
+    }, '*');
+  }
+
+  function onSelectResult(msg) {
+    if (!selectPending || msg.requestId !== selectPending.requestId) return;
+    var key = selectPending.key;
+    clearTimeout(selectPending.timer);
+    selectPending = null;
+    selectMsgs[key] = selectResultLine(msg);
+    paintSelectSlots();
+  }
+
+  // The button and its result line for one record; the slot is kept so the line can be painted later.
+  function selectRowFor(r, slots) {
+    var key = textOf(r.id);
+    var fileKey = typeof r.fileKey === 'string' && r.fileKey ? r.fileKey : null;
+    var ids = recordIds(r);
+    var row = makeEl('div', 'select-row');
+    var btn = makeEl('button', 'secondary', SELECT_LABEL);
+    btn.type = 'button';
+    var status = makeEl('span', 'status select-status');
+    status.setAttribute('aria-live', 'polite');
+    btn.addEventListener('click', function () {
+      selectInFigma(key, fileKey, ids);
+    });
+    row.appendChild(btn);
+    row.appendChild(status);
+    var slot = { key: key, btn: btn, status: status };
+    slots.push(slot);
+    paintSelectSlot(slot);
+    return row;
+  }
+
   // ---- Record cards and the record view (session only) ----
 
   var CARD_NAMES = 3; // names on a card before «+N»
@@ -820,6 +947,7 @@
 
     var actions = makeEl('div', 'rec-actions');
     actions.appendChild(statusButtonFor(r));
+    actions.appendChild(selectRowFor(r, cardSlots));
     card.appendChild(open);
     card.appendChild(actions);
     return card;
@@ -844,6 +972,7 @@
   // Builds the view of the opened record (empty when no record is open). Ids and file keys live only in «Технічні дані».
   function renderRecordView() {
     recordViewBodyEl.textContent = '';
+    viewSlots = [];
     var r = openedRecordKey === null ? null : findRecord(openedRecordKey);
     if (!r) return;
     var key = textOf(r.id);
@@ -874,6 +1003,7 @@
 
     var actions = makeEl('div', 'rec-view-actions');
     actions.appendChild(statusButtonFor(r));
+    actions.appendChild(selectRowFor(r, viewSlots));
     body.appendChild(actions);
 
     var techBtn = makeEl('button', 'link-btn', 'Технічні дані');
@@ -902,6 +1032,7 @@
     renderCurrent();
     recordsListEl.textContent = '';
     recordOpenBtns = {};
+    cardSlots = [];
     if (recordsData && openedRecordKey !== null && !findRecord(openedRecordKey)) openedRecordKey = null;
     if (recordsData) {
       if (!recordsData.length) recordsListEl.appendChild(makeEl('div', 'records-empty', 'Записів ще немає'));
@@ -1480,6 +1611,10 @@
     }
     if (msg.type === 'detail-error') {
       onDetailError(msg);
+      return;
+    }
+    if (msg.type === 'select-result') {
+      onSelectResult(msg);
       return;
     }
     if (msg.type !== 'selection') return;

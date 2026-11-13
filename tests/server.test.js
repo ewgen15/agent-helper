@@ -892,7 +892,7 @@ test('server/index.js: a detail POST creates a record and updates current', { ti
   assert.equal(records[0].fileKey, 'a');
   assert.equal(records[0].nodeCount, 2);
   assert.equal(records[0].hasDetail, true);
-  assert.deepEqual(Object.keys(current).sort(), ['empty', 'fileKey', 'nodeCount', 'nodes', 'receivedAt']);
+  assert.deepEqual(Object.keys(current).sort(), ['empty', 'fileKey', 'ids', 'nodeCount', 'nodes', 'receivedAt']);
   assert.equal(current.fileKey, 'a');
   assert.equal(current.empty, false);
   assert.equal(current.nodeCount, 2);
@@ -1061,7 +1061,7 @@ test('server/index.js GET /records', async (t) => {
     assert.equal((await postSel({ fileKey: 'emp', nodes: [], note: 'x' })).status, 200);
     const { records, current } = JSON.parse((await get({ 'x-token': TOKEN })).text);
     assert.deepEqual(records, []);
-    assert.deepEqual(current, { fileKey: 'emp', receivedAt: current.receivedAt, empty: true, nodeCount: 0, nodes: [] });
+    assert.deepEqual(current, { fileKey: 'emp', receivedAt: current.receivedAt, empty: true, nodeCount: 0, nodes: [], ids: [] });
     assert.match(current.receivedAt, /^\d{4}-\d{2}-\d{2}T/);
   });
 
@@ -1080,7 +1080,7 @@ test('server/index.js GET /records', async (t) => {
     assert.equal(capacity, 10);
     assert.deepEqual(records.map((r) => r.fileKey), ['gc', null, 'ga']);
     for (const r of records) {
-      assert.deepEqual(Object.keys(r).sort(), ['fileKey', 'hasDetail', 'id', 'nodeCount', 'nodes', 'note', 'receivedAt', 'status']);
+      assert.deepEqual(Object.keys(r).sort(), ['fileKey', 'hasDetail', 'id', 'ids', 'nodeCount', 'nodes', 'note', 'receivedAt', 'status']);
       for (const n of r.nodes) assert.deepEqual(Object.keys(n).sort(), ['id', 'name', 'type']);
       assert.match(r.receivedAt, /^\d{4}-\d{2}-\d{2}T/);
     }
@@ -1100,6 +1100,40 @@ test('server/index.js GET /records', async (t) => {
     const { current } = JSON.parse((await get({ 'x-token': TOKEN })).text);
     assert.equal(current.nodeCount, 25);
     assert.equal(current.nodes.length, 20);
+    assert.equal(current.ids.length, 25);
+  });
+
+  await t.test('record with 30 nodes: nodes capped at 20, ids holds all 30 in original order', async () => {
+    const nodes = nodesN(30, 'ids30');
+    assert.equal((await postDetailSel({ fileKey: 'ids30', nodes })).status, 200);
+    const record = (await getRecords(port)).records.find((r) => r.fileKey === 'ids30');
+    assert.equal(record.nodeCount, 30);
+    assert.equal(record.nodes.length, 20);
+    assert.equal(record.ids.length, 30);
+    assert.deepEqual(record.ids, nodes.map((n) => n.id));
+  });
+
+  await t.test('current has ids too: all nodes, and [] for an empty selection', async () => {
+    assert.equal((await postSel({ fileKey: 'cur-ids', nodes: nodesN(30, 'cid') })).status, 200);
+    let { current } = JSON.parse((await get({ 'x-token': TOKEN })).text);
+    assert.equal(current.nodes.length, 20);
+    assert.deepEqual(current.ids, nodesN(30, 'cid').map((n) => n.id));
+    assert.equal((await postSel({ fileKey: 'cur-ids', nodes: [] })).status, 200);
+    current = JSON.parse((await get({ 'x-token': TOKEN })).text).current;
+    assert.deepEqual(current.ids, []);
+  });
+
+  await t.test('ids is capped at 500 for records and current, while nodeCount stays exact', async () => {
+    const nodes = nodesN(600, 'cap500');
+    assert.equal((await postDetailSel({ fileKey: 'cap500', nodes })).status, 200);
+    assert.equal((await postSel({ fileKey: 'cap500', nodes })).status, 200);
+    const body = JSON.parse((await get({ 'x-token': TOKEN })).text);
+    const record = body.records.find((r) => r.fileKey === 'cap500');
+    assert.equal(record.nodeCount, 600);
+    assert.equal(record.ids.length, 500);
+    assert.deepEqual(record.ids, nodes.slice(0, 500).map((n) => n.id));
+    assert.equal(body.current.nodeCount, 600);
+    assert.equal(body.current.ids.length, 500);
   });
 
   await t.test('capacity 10: an 11th record evicts the oldest; a POST for an existing record moves it to the top', async () => {

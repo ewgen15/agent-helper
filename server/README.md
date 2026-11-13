@@ -50,11 +50,12 @@ curl -X POST http://localhost:3846/selection \
 `GET /records` (заголовок `x-token`, ті самі правила `Origin`/CORS; без токена `401`; `OPTIONS` дає `204` з дозволеним `GET`; інші методи `405`):
 
 ```json
-{"ok":true,"capacity":10,"records":[{"id":12,"fileKey":"abc","receivedAt":"…","nodeCount":3,"nodes":[{"id":"1:2","name":"Button","type":"FRAME"}],"hasDetail":true,"note":null,"status":"new"}],"current":{"fileKey":"abc","receivedAt":"…","empty":false,"nodeCount":3,"nodes":[{"id":"1:2","name":"Button","type":"FRAME"}]}}
+{"ok":true,"capacity":10,"records":[{"id":12,"fileKey":"abc","receivedAt":"…","nodeCount":3,"nodes":[{"id":"1:2","name":"Button","type":"FRAME"}],"ids":["1:2","1:3","1:4"],"hasDetail":true,"note":null,"status":"new"}],"current":{"fileKey":"abc","receivedAt":"…","empty":false,"nodeCount":3,"nodes":[{"id":"1:2","name":"Button","type":"FRAME"}],"ids":["1:2","1:3","1:4"]}}
 ```
 
 - `records`: найновіші записи першими. `nodes` містить лише перші 20 вузлів, `detail` не віддається. `status` є в кожному записі. Логів цей маршрут не пише.
-- `current`: `null`, якщо нічого ще не надходило; інакше об'єкт. `empty: true` і `nodeCount: 0` означають порожнє виділення. `nodes` теж обмежено 20 вузлами.
+- `ids`: масив id **усіх** вузлів запису (або `current`) у вихідному порядку, але не більше 500 (`ids` обрізається до 500, а `nodeCount` завжди точний). Потрібен плагіну, щоб відновити виділення у Figma, коли вузлів більше 20. POST дозволяє більше 500 вузлів (ліміт тіла 1 MB), тому обрізання можливе.
+- `current`: `null`, якщо нічого ще не надходило; інакше об'єкт. `empty: true` і `nodeCount: 0` означають порожнє виділення (тоді `ids: []`). `nodes` теж обмежено 20 вузлами; `ids` містить до 500 id.
 
 `POST /records/<id>/status` змінює статус збереженого запису. Заголовок `x-token`, ті самі правила `Origin`/CORS, ліміт тіла 1 MB. Тіло: `{"status": "done"}` або `{"status": "new"}`.
 

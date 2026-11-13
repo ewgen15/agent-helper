@@ -30,6 +30,8 @@ if (!TOKEN) {
 const RECORD_CAPACITY = 10;
 const STATUSES = ['new', 'done'];
 const RECORDS_NODE_PREVIEW = 20;
+// GET /records: `ids` holds the ids of all nodes (in order) up to this many; a POST may carry more nodes.
+const RECORDS_IDS_CAP = 500;
 let current = null;
 let records = [];
 let nextRecordId = 1;
@@ -206,7 +208,7 @@ function setRecordStatus(id, status) {
   return record;
 }
 
-// Shape of one record in GET /records: no detail, at most RECORDS_NODE_PREVIEW nodes.
+// Shape of one record in GET /records: no detail, at most RECORDS_NODE_PREVIEW nodes, ids of up to RECORDS_IDS_CAP nodes.
 function recordSummary(r) {
   return {
     id: r.id,
@@ -214,6 +216,7 @@ function recordSummary(r) {
     receivedAt: r.receivedAt,
     nodeCount: r.nodes.length,
     nodes: r.nodes.slice(0, RECORDS_NODE_PREVIEW).map(({ id, name, type }) => ({ id, name, type })),
+    ids: r.nodes.slice(0, RECORDS_IDS_CAP).map((n) => n.id),
     hasDetail: r.detail !== null,
     note: r.note,
     status: r.status,
@@ -229,6 +232,7 @@ function currentSummary() {
     empty: current.nodes.length === 0,
     nodeCount: current.nodes.length,
     nodes: current.nodes.slice(0, RECORDS_NODE_PREVIEW).map(({ id, name, type }) => ({ id, name, type })),
+    ids: current.nodes.slice(0, RECORDS_IDS_CAP).map((n) => n.id),
   };
 }
 

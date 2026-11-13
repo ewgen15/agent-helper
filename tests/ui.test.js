@@ -2344,3 +2344,209 @@ test('ui.html children: a node without children adds nothing; broken or missing 
   assert.equal(kidsHolder(ui, 1).children.length, 0);
   assert.equal(ui.elements.count.textContent, '2');
 });
+
+// ---- Selection tab: no inner scroll on the list, sticky send footer, collapsed copy block ----
+
+function cssRule(selector) {
+  const style = HTML.match(/<style>([\s\S]*?)<\/style>/)[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = style.match(new RegExp(`(?:^|\\s|\\})${escaped}\\s*\\{([^}]*)\\}`));
+  return match ? match[1] : null;
+}
+
+test('ui.html selection list has no inner max-height or overflow: the whole tab scrolls as one area', () => {
+  const rule = cssRule('.list');
+  assert.ok(rule !== null, '.list rule exists');
+  assert.doesNotMatch(rule, /max-height/);
+  assert.doesNotMatch(rule, /overflow/);
+});
+
+test('ui.html sticky send footer: class and styles, holds the textarea and the detail button, last in the selection panel', () => {
+  const rule = cssRule('.sel-footer');
+  assert.match(rule, /position:\s*sticky;/);
+  assert.match(rule, /bottom:\s*0;/);
+  assert.match(rule, /background:\s*var\(--card\)/, 'translucent card background');
+  assert.match(rule, /box-shadow:\s*0 -\d+px/, 'soft top shadow');
+
+  const footerAt = HTML.indexOf('<div class="sel-footer">');
+  assert.ok(footerAt > HTML.indexOf('id="list"'), 'after the list');
+  assert.ok(footerAt < HTML.indexOf('id="panelRecords"'), 'inside the selection panel');
+  const footer = HTML.slice(footerAt, HTML.indexOf('id="panelRecords"'));
+  for (const id of ['comment', 'commentCount', 'detailBtn', 'sendStatus']) {
+    assert.ok(footer.includes(`id="${id}"`), `${id} is in the footer`);
+  }
+  assert.doesNotMatch(footer, /id="copy"|id="auto"|id="status"/, 'copy controls are not in the footer');
+  assert.match(footer, /<\/div>\s*<\/div>\s*<div\s*$/, 'the footer closes right before the panel closes');
+  assert.match(cssRule('#panelSelection'), /padding-bottom:\s*0;/, 'the footer reaches the bottom edge');
+});
+
+test('ui.html copy controls sit in a closed details block above the footer, with the hint', () => {
+  const block = HTML.match(/<details id="copyBlock" class="copy-block">([\s\S]*?)<\/details>/);
+  assert.ok(block, 'a details block with id copyBlock');
+  assert.doesNotMatch(HTML.match(/<details id="copyBlock"[^>]*>/)[0], /\bopen\b/, 'collapsed by default');
+  assert.match(block[1], /<summary>Копіювання<\/summary>/);
+  assert.match(block[1], /Формат копіювання — в налаштуваннях/);
+  for (const id of ['copy', 'auto', 'status']) {
+    assert.ok(block[1].includes(`id="${id}"`), `${id} is inside the details block`);
+  }
+  const at = HTML.indexOf('id="copyBlock"');
+  assert.ok(at > HTML.indexOf('id="expandInstances"'), 'below the list and the expand checkbox');
+  assert.ok(at < HTML.indexOf('class="sel-footer"'), 'above the sticky footer');
+  assert.doesNotMatch(SCRIPT, /copyBlock|details/, 'the script neither opens nor stores the block');
+});
+
+test('ui.html copy controls keep working inside the closed details block', async () => {
+  const clip = recordingClipboard();
+  const ui = loadUi({ clipboard: clip });
+  ui.elements.auto.checked = true;
+  ui.clickDocument();
+  ui.sendSelection('abc', NODES);
+  await flush();
+  assert.deepEqual(clip.writes, ['1:2\n1:3'], 'auto-copy fires');
+  ui.clickCopy();
+  await flush();
+  assert.equal(ui.elements.status.textContent, 'Скопійовано');
+});
+
+// ---- «Виділити у Figma»: select-nodes → select-result ----
+
+const SELECT_LABEL = 'Виділити у Figma';
+
+function selectButton(root) {
+  return descendants(root).find((n) => n.tagName === 'button' && n.textContent === SELECT_LABEL);
+}
+
+function selectLine(root) {
+  return byClass(root, 'select-status')[0].textContent;
+}
+
+function selectRequests(ui) {
+  return ui.posted.map((p) => p.msg.pluginMessage).filter((m) => m.type === 'select-nodes');
+}
+
+function selectResult(ui, requestId, fields) {
+  ui.sendPlugin({ type: 'select-result', requestId, ...fields });
+}
+
+// Opens the records tab with the given records and returns the UI handle.
+async function recordsUi(records) {
+  const ui = loadSendingUi({ fetchImpl: withRecords(recordsResponse(records)) });
+  openRecords(ui);
+  await flush();
+  return ui;
+}
+
+test('ui.html select: the card button posts select-nodes with the record fileKey and ids', async () => {
+  const ui = await recordsUi([RECORD_A]);
+  const button = selectButton(cardOf(ui, 0));
+  assert.ok(button, 'the card has the select button');
+  assert.equal(byClass(cardOf(ui, 0), 'rec-open')[0].textContent.includes(SELECT_LABEL), false, 'not inside the open button');
+  button.dispatch('click', {});
+  assert.deepEqual(plain(selectRequests(ui)), [
+    { type: 'select-nodes', requestId: 1, fileKey: 'abcdefghij', ids: ['1:2', '1:3'] },
+  ]);
+  assert.deepEqual(plain(ui.posted[ui.posted.length - 1]).target, '*');
+});
+
+test('ui.html select: ids come from the record ids when present, otherwise from its nodes', async () => {
+  const withIds = { ...RECORD_A, ids: ['1:2', '1:3', '1:4'] };
+  const ui = await recordsUi([withIds, RECORD_B]);
+  selectButton(cardOf(ui, 0)).dispatch('click', {});
+  selectButton(cardOf(ui, 1)).dispatch('click', {});
+  assert.deepEqual(selectRequests(ui).map((m) => m.ids), [['1:2', '1:3', '1:4'], ['2:1']]);
+  assert.equal(selectRequests(ui)[1].fileKey, null, 'a record without fileKey sends null');
+});
+
+test('ui.html select: the record view button posts the same request', async () => {
+  const ui = await recordsUi([RECORD_A]);
+  openCard(ui, 0);
+  const button = selectButton(ui.elements.recordViewBody);
+  assert.ok(button, 'the record view has the select button');
+  button.dispatch('click', {});
+  assert.deepEqual(plain(selectRequests(ui)[0]), { type: 'select-nodes', requestId: 1, fileKey: 'abcdefghij', ids: ['1:2', '1:3'] });
+});
+
+test('ui.html select: requestId increments with every click', async () => {
+  const ui = await recordsUi([RECORD_A]);
+  selectButton(cardOf(ui, 0)).dispatch('click', {});
+  selectButton(cardOf(ui, 0)).dispatch('click', {});
+  assert.deepEqual(selectRequests(ui).map((m) => m.requestId), [1, 2]);
+});
+
+test('ui.html select: each result status has its Ukrainian text and kind', async (t) => {
+  const cases = [
+    ['ok', { requested: 2, found: 2 }, 'Виділено 2 елементи у Figma', 'status select-status ok'],
+    ['partial', { requested: 2, found: 1 }, 'Виділено 1 з 2 (решту не знайдено або вони на іншій сторінці)', 'status select-status'],
+    ['none', { requested: 2, found: 0 }, 'Елементи не знайдено у Figma (можливо, видалені)', 'status select-status err'],
+    ['other-file', { requested: 2, found: 0 }, 'Цей запис з іншого файлу Figma. Відкрийте той файл', 'status select-status err'],
+    ['error', {}, 'Не вдалося виділити', 'status select-status err'],
+  ];
+  for (const [status, fields, text, className] of cases) {
+    await t.test(status, async () => {
+      const ui = await recordsUi([RECORD_A]);
+      selectButton(cardOf(ui, 0)).dispatch('click', {});
+      selectResult(ui, 1, { status, ...fields });
+      assert.equal(selectLine(cardOf(ui, 0)), text);
+      assert.equal(byClass(cardOf(ui, 0), 'select-status')[0].className, className);
+      assert.equal(selectButton(cardOf(ui, 0)).disabled, false, 'the button is usable again');
+    });
+  }
+});
+
+test('ui.html select: the count of the ok text follows the Ukrainian plural', async () => {
+  const ui = await recordsUi([RECORD_A]);
+  selectButton(cardOf(ui, 0)).dispatch('click', {});
+  const expected = { 1: 'елемент', 2: 'елементи', 5: 'елементів', 11: 'елементів', 22: 'елементи' };
+  let requestId = 1;
+  for (const [n, word] of Object.entries(expected)) {
+    selectButton(cardOf(ui, 0)).dispatch('click', {});
+    requestId = selectRequests(ui).length;
+    selectResult(ui, requestId, { status: 'ok', requested: Number(n), found: Number(n) });
+    assert.equal(selectLine(cardOf(ui, 0)), `Виділено ${n} ${word} у Figma`);
+  }
+});
+
+test('ui.html select: a switched page is appended to the result text', async () => {
+  const ui = await recordsUi([RECORD_A]);
+  selectButton(cardOf(ui, 0)).dispatch('click', {});
+  selectResult(ui, 1, { status: 'ok', requested: 2, found: 2, switchedPage: true, pageName: 'Бібліотека' });
+  assert.equal(selectLine(cardOf(ui, 0)), 'Виділено 2 елементи у Figma · перейшли на сторінку «Бібліотека»');
+});
+
+test('ui.html select: a stale reply (old requestId) is ignored; the newest reply counts', async () => {
+  const ui = await recordsUi([RECORD_A]);
+  selectButton(cardOf(ui, 0)).dispatch('click', {}); // request 1
+  selectButton(cardOf(ui, 0)).dispatch('click', {}); // request 2 replaces it
+  selectResult(ui, 1, { status: 'ok', requested: 2, found: 2 });
+  assert.equal(selectLine(cardOf(ui, 0)), 'Виділяю…', 'the old reply does not show');
+  assert.equal(selectButton(cardOf(ui, 0)).disabled, true, 'request 2 is still in flight');
+  selectResult(ui, 2, { status: 'none', requested: 2, found: 0 });
+  assert.equal(selectLine(cardOf(ui, 0)), 'Елементи не знайдено у Figma (можливо, видалені)');
+});
+
+test('ui.html select: no answer within 5 seconds shows "Figma не відповіла"', async () => {
+  const ui = await recordsUi([RECORD_A]);
+  selectButton(cardOf(ui, 0)).dispatch('click', {});
+  const timer = ui.timers.find((t) => t.ms === 5000 && !t.cleared);
+  assert.ok(timer, 'a 5000 ms timeout is armed');
+  timer.fn();
+  assert.equal(selectLine(cardOf(ui, 0)), 'Figma не відповіла');
+  assert.equal(byClass(cardOf(ui, 0), 'select-status')[0].className, 'status select-status err');
+  assert.equal(selectButton(cardOf(ui, 0)).disabled, false);
+  selectResult(ui, 1, { status: 'ok', requested: 2, found: 2 });
+  assert.equal(selectLine(cardOf(ui, 0)), 'Figma не відповіла', 'a late reply after the timeout is ignored');
+});
+
+test('ui.html select: the result line shows in the record view too', async () => {
+  const ui = await recordsUi([RECORD_A]);
+  openCard(ui, 0);
+  selectButton(ui.elements.recordViewBody).dispatch('click', {});
+  selectResult(ui, 1, { status: 'other-file', requested: 2, found: 0 });
+  assert.equal(selectLine(ui.elements.recordViewBody), 'Цей запис з іншого файлу Figma. Відкрийте той файл');
+});
+
+test('ui.html select: the select button is not a record list state and needs no sending for its result', () => {
+  assert.match(HTML, /makeEl\('button', 'secondary', SELECT_LABEL\)/);
+  assert.ok(HTML.includes('Виділити у Figma'), 'the exact button text');
+  assert.ok(HTML.includes("msg.type === 'select-result'"), 'select-result is handled');
+});

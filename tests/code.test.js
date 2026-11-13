@@ -1300,3 +1300,211 @@ test('request-detail: a raw fill and stroke are marked "!", a paint style as @st
   assert.equal(roots[1].f, '#464749!');
   assert.equal(roots[1].s, '$border/subtle 1');
 });
+
+// ---- select-nodes: restores a saved record's selection (spec: UI→main select-nodes, main→UI select-result) ----
+
+const selectReplies = (ctx) => plain(ctx.posted.filter((m) => m.type === 'select-result'));
+const selectedIds = (page) => plain(page.selection.map((n) => n.id));
+const selectPage = (id, name, children = []) => adopt(node(id, name, 'PAGE', { children: [], selection: [] }), children);
+
+// Loads code.js with the pages as the document; setCurrentPageAsync moves figma.currentPage like Figma does.
+async function loadSelectCtx(pages, currentPage, fileKey) {
+  const log = { switched: [], scrolled: [] };
+  const holder = {};
+  const extra = {
+    ...figmaExtras({ nodes: pages }),
+    currentPage,
+    async setCurrentPageAsync(page) {
+      log.switched.push(page.name);
+      // Object.assign: the Figma lint rule bans a direct assignment to currentPage, even in a stub.
+      Object.assign(holder.ctx.figma, { currentPage: page });
+    },
+    viewport: {
+      scrollAndZoomIntoView(nodes) {
+        log.scrolled.push(nodes.map((n) => n.id));
+      },
+    },
+  };
+  const ctx = await loadCode({ fileKey, extra });
+  holder.ctx = ctx;
+  return { ctx, log };
+}
+
+async function selectNodes(ctx, ids, { fileKey = null, requestId = 30 } = {}) {
+  ctx.figma.ui.onmessage({ type: 'select-nodes', requestId, fileKey, ids });
+  await flush();
+  await flush();
+}
+
+test('select-nodes: ok when every id is found, selects them and scrolls to them', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A'), frame('1:2', 'B'), frame('1:3', 'C')]);
+  const { ctx, log } = await loadSelectCtx([main], main);
+  await selectNodes(ctx, ['1:1', '1:2', '1:3']);
+  assert.deepEqual(selectReplies(ctx), [{ type: 'select-result', requestId: 30, status: 'ok', requested: 3, found: 3, switchedPage: false }]);
+  assert.deepEqual(selectedIds(main), ['1:1', '1:2', '1:3']);
+  assert.deepEqual(log.switched, []);
+  assert.deepEqual(plain(log.scrolled), [['1:1', '1:2', '1:3']]);
+});
+
+test('select-nodes: partial when one id is missing; the found nodes are selected', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A'), frame('1:3', 'C')]);
+  const { ctx } = await loadSelectCtx([main], main);
+  await selectNodes(ctx, ['1:1', 'missing', '1:3']);
+  assert.deepEqual(selectReplies(ctx), [{ type: 'select-result', requestId: 30, status: 'partial', requested: 3, found: 2, switchedPage: false }]);
+  assert.deepEqual(selectedIds(main), ['1:1', '1:3']);
+});
+
+test('select-nodes: partial when a removed node is among the ids', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A'), frame('1:2', 'Gone', { removed: true })]);
+  const { ctx } = await loadSelectCtx([main], main);
+  await selectNodes(ctx, ['1:1', '1:2']);
+  assert.deepEqual(selectReplies(ctx)[0], { type: 'select-result', requestId: 30, status: 'partial', requested: 2, found: 1, switchedPage: false });
+  assert.deepEqual(selectedIds(main), ['1:1']);
+});
+
+test('select-nodes: none when nothing resolves (missing ids, a page id, an empty list); selection is not changed', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A')]);
+  const { ctx, log } = await loadSelectCtx([main], main);
+  main.selection = [frame('9:9', 'Keep')];
+  await selectNodes(ctx, ['x', '0:1'], { requestId: 31 });
+  assert.deepEqual(selectReplies(ctx), [{ type: 'select-result', requestId: 31, status: 'none', requested: 2, found: 0, switchedPage: false }]);
+  assert.deepEqual(selectedIds(main), ['9:9'], 'a page id is not selectable; selection kept');
+  await selectNodes(ctx, [], { requestId: 32 });
+  assert.deepEqual(selectReplies(ctx)[1], { type: 'select-result', requestId: 32, status: 'none', requested: 0, found: 0, switchedPage: false });
+  assert.deepEqual(log.scrolled, []);
+});
+
+test('select-nodes: other-file when the record fileKey differs from figma.fileKey; nothing changes', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A')]);
+  const { ctx, log } = await loadSelectCtx([main], main, 'FK-A');
+  await selectNodes(ctx, ['1:1'], { fileKey: 'FK-B' });
+  assert.deepEqual(selectReplies(ctx), [{ type: 'select-result', requestId: 30, status: 'other-file', requested: 1, found: 0, switchedPage: false }]);
+  assert.deepEqual(selectedIds(main), []);
+  assert.deepEqual(log.scrolled, []);
+});
+
+test('select-nodes: the file check is skipped when either fileKey is null or missing', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A')]);
+  const withKey = await loadSelectCtx([main], main, 'FK-A');
+  await selectNodes(withKey.ctx, ['1:1'], { fileKey: null });
+  assert.equal(selectReplies(withKey.ctx)[0].status, 'ok');
+
+  const other = selectPage('0:1', 'Main', [frame('1:1', 'A')]);
+  const noKey = await loadSelectCtx([other], other, undefined);
+  await selectNodes(noKey.ctx, ['1:1'], { fileKey: 'FK-B' });
+  assert.equal(selectReplies(noKey.ctx)[0].status, 'ok');
+});
+
+test('select-nodes: a node on another page switches the page and reports pageName', async () => {
+  const first = selectPage('0:1', 'First', [frame('1:1', 'A')]);
+  const second = selectPage('0:2', 'Second', [frame('2:1', 'B'), frame('2:2', 'C')]);
+  const { ctx, log } = await loadSelectCtx([first, second], first);
+  await selectNodes(ctx, ['2:1', '2:2']);
+  assert.deepEqual(log.switched, ['Second']);
+  assert.equal(ctx.figma.currentPage, second);
+  assert.deepEqual(selectReplies(ctx), [{ type: 'select-result', requestId: 30, status: 'ok', requested: 2, found: 2, switchedPage: true, pageName: 'Second' }]);
+  assert.deepEqual(selectedIds(second), ['2:1', '2:2']);
+  assert.deepEqual(selectedIds(first), []);
+});
+
+test('select-nodes: nodes on a second page are dropped as partial; the page of the first found node wins', async () => {
+  const first = selectPage('0:1', 'First', [frame('1:1', 'A'), frame('1:2', 'B')]);
+  const second = selectPage('0:2', 'Second', [frame('2:1', 'C')]);
+  const { ctx, log } = await loadSelectCtx([first, second], first);
+  await selectNodes(ctx, ['1:1', '2:1', '1:2']);
+  assert.deepEqual(selectReplies(ctx), [{ type: 'select-result', requestId: 30, status: 'partial', requested: 3, found: 2, switchedPage: false }]);
+  assert.deepEqual(selectedIds(first), ['1:1', '1:2']);
+  assert.deepEqual(log.switched, []);
+
+  await selectNodes(ctx, ['2:1', '1:1'], { requestId: 33 });
+  assert.deepEqual(selectReplies(ctx)[1], { type: 'select-result', requestId: 33, status: 'partial', requested: 2, found: 1, switchedPage: true, pageName: 'Second' });
+  assert.deepEqual(selectedIds(second), ['2:1']);
+});
+
+test('select-nodes: duplicate ids are counted once', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A')]);
+  const { ctx } = await loadSelectCtx([main], main);
+  await selectNodes(ctx, ['1:1', '1:1']);
+  assert.deepEqual(selectReplies(ctx)[0], { type: 'select-result', requestId: 30, status: 'ok', requested: 1, found: 1, switchedPage: false });
+  assert.deepEqual(selectedIds(main), ['1:1']);
+});
+
+test('select-nodes: invalid message shapes are ignored without a reply and without throwing', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A')]);
+  const { ctx, log } = await loadSelectCtx([main], main);
+  const bad = [
+    { type: 'select-nodes', requestId: '30', fileKey: null, ids: ['1:1'] },
+    { type: 'select-nodes', requestId: NaN, fileKey: null, ids: ['1:1'] },
+    { type: 'select-nodes', fileKey: null, ids: ['1:1'] },
+    { type: 'select-nodes', requestId: 30, ids: ['1:1'] },
+    { type: 'select-nodes', requestId: 30, fileKey: undefined, ids: ['1:1'] },
+    { type: 'select-nodes', requestId: 30, fileKey: 5, ids: ['1:1'] },
+    { type: 'select-nodes', requestId: 30, fileKey: null, ids: '1:1' },
+    { type: 'select-nodes', requestId: 30, fileKey: null, ids: null },
+    { type: 'select-nodes', requestId: 30, fileKey: null },
+    { type: 'select-nodes', requestId: 30, fileKey: null, ids: [1] },
+    { type: 'select-nodes', requestId: 30, fileKey: null, ids: ['1:1', null] },
+    { type: 'select-nodes', requestId: 30, fileKey: null, ids: Array(501).fill('1:1') },
+    null,
+    [],
+  ];
+  for (const msg of bad) {
+    assert.doesNotThrow(() => ctx.figma.ui.onmessage(msg), `throws for ${JSON.stringify(msg)}`);
+  }
+  await flush();
+  await flush();
+  assert.deepEqual(selectReplies(ctx), []);
+  assert.deepEqual(selectedIds(main), []);
+  assert.deepEqual(log.switched, []);
+});
+
+test('select-nodes: exactly 500 ids is accepted', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A')]);
+  const { ctx } = await loadSelectCtx([main], main);
+  const ids = Array.from({ length: 500 }, (_, i) => `9:${i}`);
+  await selectNodes(ctx, ids, { requestId: 34 });
+  assert.deepEqual(selectReplies(ctx), [{ type: 'select-result', requestId: 34, status: 'none', requested: 500, found: 0, switchedPage: false }]);
+});
+
+test('select-nodes: getNodeByIdAsync throwing for one id is skipped; throwing for all gives none, never a throw', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A'), frame('1:3', 'C')]);
+  const { ctx } = await loadSelectCtx([main], main);
+  const lookup = ctx.figma.getNodeByIdAsync;
+  ctx.figma.getNodeByIdAsync = async (id) => {
+    if (id === '1:2') throw new Error('lookup failed');
+    return lookup(id);
+  };
+  await selectNodes(ctx, ['1:1', '1:2', '1:3']);
+  assert.deepEqual(selectReplies(ctx)[0], { type: 'select-result', requestId: 30, status: 'partial', requested: 3, found: 2, switchedPage: false });
+
+  ctx.figma.getNodeByIdAsync = async () => {
+    throw new Error('lookup failed');
+  };
+  assert.doesNotThrow(() => ctx.figma.ui.onmessage({ type: 'select-nodes', requestId: 35, fileKey: null, ids: ['1:1'] }));
+  await flush();
+  await flush();
+  assert.deepEqual(selectReplies(ctx)[1], { type: 'select-result', requestId: 35, status: 'none', requested: 1, found: 0, switchedPage: false });
+});
+
+test('select-nodes: an error after the lookup gives status error with found 0, and the selection is not changed', async () => {
+  const first = selectPage('0:1', 'First', [frame('1:1', 'A')]);
+  const second = selectPage('0:2', 'Second', [frame('2:1', 'B')]);
+  const { ctx } = await loadSelectCtx([first, second], first);
+  ctx.figma.setCurrentPageAsync = async () => {
+    throw new Error('page switch refused');
+  };
+  await selectNodes(ctx, ['2:1'], { requestId: 36 });
+  assert.deepEqual(selectReplies(ctx), [{ type: 'select-result', requestId: 36, status: 'error', requested: 1, found: 0, switchedPage: false }]);
+  assert.deepEqual(selectedIds(second), []);
+});
+
+test('select-nodes: a throwing scrollAndZoomIntoView does not change the status', async () => {
+  const main = selectPage('0:1', 'Main', [frame('1:1', 'A')]);
+  const { ctx } = await loadSelectCtx([main], main);
+  ctx.figma.viewport.scrollAndZoomIntoView = () => {
+    throw new Error('no viewport');
+  };
+  await selectNodes(ctx, ['1:1']);
+  assert.deepEqual(selectReplies(ctx)[0], { type: 'select-result', requestId: 30, status: 'ok', requested: 1, found: 1, switchedPage: false });
+  assert.deepEqual(selectedIds(main), ['1:1']);
+});
